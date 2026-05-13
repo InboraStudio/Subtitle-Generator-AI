@@ -1,0 +1,21 @@
+<RCC>
+    <qresource prefix="/">
+        <file>styles/dark.qss</file>
+        <file>icons/app.png</file>
+        <file>icons/input.png</file>
+        <file>icons/settings.png</file>
+        <file>icons/progress.png</file>
+        <file>icons/monitor.png</file>
+        <file>icons/log.png</file>
+        <file>icons/folder.png</file>
+        <file>icons/file.png</file>
+        <file>icons/play.png</file>
+        <file>icons/pause.png</file>
+        <file>icons/stop.png</file>
+        <file>icons/clear.png</file>
+        <file>icons/save.png</file>
+        <file>icons/close.png</file>
+        <file>icons/minimize.png</file>
+        <file>icons/maximize.png</file>
+    </qresource>
+</RCC>

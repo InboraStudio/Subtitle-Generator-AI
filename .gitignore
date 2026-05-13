@@ -1,0 +1,13 @@
+/build/
+/build.log
+/build_cmd.log
+/installer_output/
+/models/
+/.cache/
+/third_party/whisper.cpp/build/
+*.zip
+*.bin
+*.gguf
+*.exe
+*.dll
+*.log
