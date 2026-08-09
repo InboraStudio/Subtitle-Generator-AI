@@ -30,6 +30,9 @@ public:
 
   QString lastDownloadedPath() const;
 
+protected:
+  void closeEvent(QCloseEvent *e) override;
+
 private slots:
   void onSelectionChanged();
   void onDownloadClicked();
@@ -45,6 +48,7 @@ private:
   bool hasGpu() const;
   QString recommendedModelId() const;
   void setDownloading(bool active);
+  void abortActiveDownload();
   QString formatSize(qint64 bytes) const;
   QString modelsDir() const;
 

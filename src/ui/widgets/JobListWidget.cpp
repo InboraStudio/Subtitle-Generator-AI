@@ -114,6 +114,18 @@ void JobListItem::setStatus(JobStatus status) {
     m_bar->setValue(0);
 }
 
+void JobListItem::setError(const QString &error) {
+  // Collapse newlines so the one-line stage label stays tidy; keep the full
+  // text in the tooltip for the complete diagnostic.
+  QString oneLine = error;
+  oneLine.replace('\n', "  ").replace('\r', "");
+  QFontMetrics fm(m_stageLabel->font());
+  m_stageLabel->setText(fm.elidedText(oneLine, Qt::ElideRight, 200));
+  m_stageLabel->setStyleSheet("color:#E05050; font-size:7pt;");
+  setToolTip(error);
+  m_stageLabel->setToolTip(error);
+}
+
 int JobListItem::jobId() const { return m_jobId; }
 
 JobListWidget::JobListWidget(QWidget *parent) : QWidget(parent) {
@@ -149,6 +161,11 @@ void JobListWidget::updateJobProgress(int jobId, int percent,
 void JobListWidget::updateJobStatus(int jobId, JobStatus status) {
   if (m_widgetMap.contains(jobId))
     m_widgetMap[jobId]->setStatus(status);
+}
+
+void JobListWidget::setJobError(int jobId, const QString &error) {
+  if (m_widgetMap.contains(jobId))
+    m_widgetMap[jobId]->setError(error);
 }
 
 void JobListWidget::clearAll() {

@@ -17,6 +17,8 @@ signals:
   void logMessage(const QString &msg);
 
 private:
+  double probeDurationSeconds(const QString &videoPath) const;
+
   QString m_ffmpegPath;
   bool m_cancelled = false;
 };

@@ -23,6 +23,28 @@ static QFrame *makeDivider(QWidget *parent) {
   return d;
 }
 
+// Builds a consistent "label : control" form row so every settings row shares
+// the same label column width and controls align vertically down the card.
+// When expand is true the control fills the remaining width (combos, line
+// edits); otherwise it keeps its natural size and is pushed to the right
+// (toggles, spin boxes).
+static QHBoxLayout *formRow(QWidget *parent, const QString &labelText,
+                            QWidget *control, bool expand) {
+  auto *row = new QHBoxLayout();
+  row->setSpacing(12);
+  auto *lbl = new QLabel(labelText, parent);
+  lbl->setMinimumWidth(130);
+  lbl->setStyleSheet("color:#B0B0B0; font-size:9pt;");
+  row->addWidget(lbl, 0);
+  if (expand) {
+    row->addWidget(control, 1);
+  } else {
+    row->addStretch();
+    row->addWidget(control, 0);
+  }
+  return row;
+}
+
 SettingsPanel::SettingsPanel(QWidget *parent) : QWidget(parent) {
   auto *scroll = new QScrollArea(this);
   scroll->setWidgetResizable(true);
@@ -54,9 +76,7 @@ SettingsPanel::SettingsPanel(QWidget *parent) : QWidget(parent) {
     cl->addWidget(ct);
     cl->addWidget(makeDivider(card));
 
-    auto *mr = new QHBoxLayout();
     m_modelCombo = new QComboBox(card);
-    m_modelCombo->setMinimumWidth(240);
     connect(m_modelCombo, &QComboBox::currentIndexChanged, [this] {
       QString path = m_modelCombo->currentData().toString();
       m_modelTierLabel->setText(
@@ -64,24 +84,30 @@ SettingsPanel::SettingsPanel(QWidget *parent) : QWidget(parent) {
                          : "Tier: " + TranscriptionEngine::modelTier(path));
       emit settingsChanged();
     });
-    mr->addWidget(new QLabel("AI Model:", card), 0);
     m_modelCombo->setToolTip(
         "Select the local AI whisper model to process audio transcription.");
-    mr->addWidget(m_modelCombo, 1);
 
     auto *refreshBtn = new QPushButton("Refresh", card);
     refreshBtn->setObjectName("secondaryBtn");
     refreshBtn->setToolTip("Refresh model list");
     connect(refreshBtn, &QPushButton::clicked, this,
             &SettingsPanel::refreshModels);
-    mr->addWidget(refreshBtn);
 
     auto *browseBtn = new QPushButton("Browse", card);
     browseBtn->setObjectName("secondaryBtn");
     connect(browseBtn, &QPushButton::clicked, this,
             &SettingsPanel::browseModels);
-    mr->addWidget(browseBtn);
-    cl->addLayout(mr);
+
+    {
+      auto *modelWrap = new QWidget(card);
+      auto *modelHl = new QHBoxLayout(modelWrap);
+      modelHl->setContentsMargins(0, 0, 0, 0);
+      modelHl->setSpacing(8);
+      modelHl->addWidget(m_modelCombo, 1);
+      modelHl->addWidget(refreshBtn, 0);
+      modelHl->addWidget(browseBtn, 0);
+      cl->addLayout(formRow(card, "AI Model:", modelWrap, true));
+    }
 
     auto *getModelsRow = new QHBoxLayout();
     auto *getModelsBtn = new QPushButton("Get Models", card);
@@ -99,27 +125,23 @@ SettingsPanel::SettingsPanel(QWidget *parent) : QWidget(parent) {
     auto *dlHint = new QLabel(
         "Model Manager detects your system RAM and recommends the best model.",
         card);
-    dlHint->setStyleSheet("color:#404040; font-size:7.5pt;");
+    dlHint->setStyleSheet("color:#6E6E6E; font-size:8pt;");
     dlHint->setWordWrap(true);
     cl->addWidget(dlHint);
 
     m_modelTierLabel = new QLabel("", card);
-    m_modelTierLabel->setStyleSheet("color:#505050; font-size:7.5pt;");
+    m_modelTierLabel->setStyleSheet("color:#8A8A8A; font-size:8pt;");
     cl->addWidget(m_modelTierLabel);
 
-    auto *fr = new QHBoxLayout();
-    fr->addWidget(new QLabel("Generation Mode:", card));
-    fr->addStretch();
     m_fastModeToggle = new ToggleSwitch(card);
     m_fastModeToggle->setToolTip(
         "Toggles fast processing. Disabled means highest accuracy.");
-    fr->addWidget(m_fastModeToggle);
-    cl->addLayout(fr);
+    cl->addLayout(formRow(card, "Generation Mode:", m_fastModeToggle, false));
 
     auto *hint = new QLabel("Fast = tiny/base model, Greedy search. Accurate = "
                             "medium/large, Beam search.",
                             card);
-    hint->setStyleSheet("color:#444444; font-size:7.5pt;");
+    hint->setStyleSheet("color:#6E6E6E; font-size:8pt;");
     hint->setWordWrap(true);
     cl->addWidget(hint);
 
@@ -143,47 +165,36 @@ SettingsPanel::SettingsPanel(QWidget *parent) : QWidget(parent) {
 
     m_fontCombo = new QFontComboBox(card);
     m_fontCombo->setCurrentFont(QFont("Arial"));
-    auto *fr1 = new QHBoxLayout();
-    fr1->addWidget(new QLabel("Font:", card));
-    fr1->addWidget(m_fontCombo);
-    cl->addLayout(fr1);
+    cl->addLayout(formRow(card, "Font:", m_fontCombo, true));
 
     m_fontSizeSpin = new QSpinBox(card);
     m_fontSizeSpin->setRange(8, 120);
     m_fontSizeSpin->setValue(10);
-    auto *fr2 = new QHBoxLayout();
-    fr2->addWidget(new QLabel("Size:", card));
-    fr2->addWidget(m_fontSizeSpin);
-    cl->addLayout(fr2);
+    m_fontSizeSpin->setFixedWidth(90);
+    cl->addLayout(formRow(card, "Size:", m_fontSizeSpin, false));
 
     m_colorBtn = new QPushButton("Pick Color", card);
-    m_colorBtn->setStyleSheet(QString(
-        "background-color: #FFFFFF; color: black; border: 1px solid #ccc;"));
+    m_colorBtn->setFixedWidth(120);
+    m_colorBtn->setMinimumHeight(28);
+    m_colorBtn->setStyleSheet(
+        "background-color:#FFFFFF; color:#000000; border:1px solid #3A3A3A; "
+        "border-radius:6px; font-weight:600;");
     connect(m_colorBtn, &QPushButton::clicked, this, &SettingsPanel::pickColor);
-    auto *fr3 = new QHBoxLayout();
-    fr3->addWidget(new QLabel("Color:", card));
-    fr3->addWidget(m_colorBtn);
-    cl->addLayout(fr3);
+    cl->addLayout(formRow(card, "Color:", m_colorBtn, false));
 
     m_alignCombo = new QComboBox(card);
     m_alignCombo->addItems({"Bottom Center", "Bottom Left", "Bottom Right",
                             "Top Center", "Top Left", "Top Right", "Center",
                             "Center Left", "Center Right"});
-    auto *fr4 = new QHBoxLayout();
-    fr4->addWidget(new QLabel("Position:", card));
-    fr4->addWidget(m_alignCombo);
-    cl->addLayout(fr4);
+    cl->addLayout(formRow(card, "Position:", m_alignCombo, true));
 
-    // Add Outline Thickness Option
     m_outlineSpin = new QSpinBox(card);
     m_outlineSpin->setRange(0, 10);
     m_outlineSpin->setValue(1);
+    m_outlineSpin->setFixedWidth(90);
     m_outlineSpin->setToolTip(
         "Thickness of the text border shadow/outline in pixels.");
-    auto *fr5 = new QHBoxLayout();
-    fr5->addWidget(new QLabel("Outline Thickness:", card));
-    fr5->addWidget(m_outlineSpin);
-    cl->addLayout(fr5);
+    cl->addLayout(formRow(card, "Outline Thickness:", m_outlineSpin, false));
 
     vl->addWidget(card);
   }
@@ -203,38 +214,34 @@ SettingsPanel::SettingsPanel(QWidget *parent) : QWidget(parent) {
     cl->addWidget(ct);
     cl->addWidget(makeDivider(card));
 
-    auto *or2 = new QHBoxLayout();
     m_outputDirEdit = new QLineEdit(card);
     m_outputDirEdit->setPlaceholderText("Select output directory...");
     m_outputDirEdit->setText(
         QStandardPaths::writableLocation(QStandardPaths::DesktopLocation));
-    or2->addWidget(new QLabel("Output Dir:", card));
-    or2->addWidget(m_outputDirEdit, 1);
     auto *obtn = new QPushButton("Browse", card);
     obtn->setObjectName("secondaryBtn");
     connect(obtn, &QPushButton::clicked, this, &SettingsPanel::browseOutputDir);
-    or2->addWidget(obtn);
-    cl->addLayout(or2);
+    {
+      auto *outWrap = new QWidget(card);
+      auto *outHl = new QHBoxLayout(outWrap);
+      outHl->setContentsMargins(0, 0, 0, 0);
+      outHl->setSpacing(8);
+      outHl->addWidget(m_outputDirEdit, 1);
+      outHl->addWidget(obtn, 0);
+      cl->addLayout(formRow(card, "Output Dir:", outWrap, true));
+    }
 
-    auto *er = new QHBoxLayout();
-    er->addWidget(new QLabel("Embed Subs:", card));
-    er->addStretch();
     m_embedToggle = new ToggleSwitch(card);
     m_embedToggle->setChecked(true);
-    er->addWidget(m_embedToggle);
-    cl->addLayout(er);
+    cl->addLayout(formRow(card, "Embed Subs:", m_embedToggle, false));
 
-    auto *pr = new QHBoxLayout();
-    pr->addWidget(new QLabel("Parallel Pipelines:", card));
-    pr->addStretch();
     m_parallelSpin = new QSpinBox(card);
     m_parallelSpin->setToolTip("Number of videos to process concurrently. "
                                "Increasing this requires more RAM.");
     m_parallelSpin->setRange(1, QThread::idealThreadCount());
     m_parallelSpin->setValue(1);
-    m_parallelSpin->setFixedWidth(52);
-    pr->addWidget(m_parallelSpin);
-    cl->addLayout(pr);
+    m_parallelSpin->setFixedWidth(90);
+    cl->addLayout(formRow(card, "Parallel Pipelines:", m_parallelSpin, false));
 
     vl->addWidget(card);
   }
@@ -254,45 +261,28 @@ SettingsPanel::SettingsPanel(QWidget *parent) : QWidget(parent) {
     cl->addWidget(ct);
     cl->addWidget(makeDivider(card));
 
-    auto *tr2 = new QHBoxLayout();
-    tr2->addWidget(new QLabel("Enable:", card));
-    tr2->addStretch();
     m_translateToggle = new ToggleSwitch(card);
-    tr2->addWidget(m_translateToggle);
-    cl->addLayout(tr2);
+    cl->addLayout(formRow(card, "Enable:", m_translateToggle, false));
 
-    auto *slr = new QHBoxLayout();
-    slr->addWidget(new QLabel("Source Lang:", card));
-    slr->addStretch();
     m_srcLangCombo = new QComboBox(card);
-    m_srcLangCombo->setMinimumWidth(160);
     for (const QString &lang : TranslationEngine::supportedLanguages())
       m_srcLangCombo->addItem(lang);
-    slr->addWidget(m_srcLangCombo);
-    cl->addLayout(slr);
+    cl->addLayout(formRow(card, "Source Lang:", m_srcLangCombo, true));
 
-    auto *tlr = new QHBoxLayout();
-    tlr->addWidget(new QLabel("Target Lang:", card));
-    tlr->addStretch();
     m_tgtLangCombo = new QComboBox(card);
-    m_tgtLangCombo->setMinimumWidth(160);
     for (const QString &lang : TranslationEngine::supportedLanguages())
       m_tgtLangCombo->addItem(lang);
     m_tgtLangCombo->setCurrentText("English");
-    tlr->addWidget(m_tgtLangCombo);
-    cl->addLayout(tlr);
+    cl->addLayout(formRow(card, "Target Lang:", m_tgtLangCombo, true));
 
-    auto *er2 = new QHBoxLayout();
-    er2->addWidget(new QLabel("API Endpoint:", card));
     m_endpointEdit = new QLineEdit(card);
     m_endpointEdit->setPlaceholderText("http://localhost:5000");
     m_endpointEdit->setText("http://localhost:5000");
-    er2->addWidget(m_endpointEdit, 1);
-    cl->addLayout(er2);
+    cl->addLayout(formRow(card, "API Endpoint:", m_endpointEdit, true));
 
     auto *hint = new QLabel(
         "Requires a running LibreTranslate server for offline use.", card);
-    hint->setStyleSheet("color:#444444; font-size:7.5pt;");
+    hint->setStyleSheet("color:#6E6E6E; font-size:8pt;");
     hint->setWordWrap(true);
     cl->addWidget(hint);
 
@@ -383,7 +373,10 @@ QString SettingsPanel::sourceLanguage() const {
   return TranslationEngine::languageCode(m_srcLangCombo->currentText());
 }
 QString SettingsPanel::targetLanguage() const {
-  return m_tgtLangCombo->currentData().toString();
+  // The combo stores display names (no per-item data), so resolve the code the
+  // same way sourceLanguage() does. Using currentData() here always returned an
+  // empty string, which silently disabled translation downstream.
+  return TranslationEngine::languageCode(m_tgtLangCombo->currentText());
 }
 
 bool SettingsPanel::translationEnabled() const {

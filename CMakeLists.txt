@@ -15,6 +15,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Core Concurrent Network)
 set(SOURCES
     src/main.cpp
     src/core/AudioExtractor.cpp
+    src/core/FfmpegLocator.cpp
     src/core/TranscriptionEngine.cpp
     src/core/TranslationEngine.cpp
     src/core/SubtitleWriter.cpp
@@ -42,6 +43,7 @@ set(SOURCES
 
 set(HEADERS
     src/core/AudioExtractor.h
+    src/core/FfmpegLocator.h
     src/core/TranscriptionEngine.h
     src/core/TranslationEngine.h
     src/core/SubtitleWriter.h

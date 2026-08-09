@@ -1,4 +1,5 @@
 #include "ModelDownloadDialog.h"
+#include <QCloseEvent>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
@@ -340,8 +341,10 @@ void ModelDownloadDialog::onDownloadClicked() {
           &ModelDownloadDialog::onDownloadProgress);
   connect(m_reply, &QNetworkReply::finished, this,
           &ModelDownloadDialog::onDownloadFinished);
-  connect(m_reply, &QNetworkReply::readyRead,
-          [this] { m_outFile.write(m_reply->readAll()); });
+  connect(m_reply, &QNetworkReply::readyRead, this, [this] {
+    if (m_reply && m_outFile.isOpen())
+      m_outFile.write(m_reply->readAll());
+  });
 
   setDownloading(true);
   m_progressLabel->setText(QString("Downloading %1 (%2)...")
@@ -361,12 +364,20 @@ void ModelDownloadDialog::onDownloadProgress(qint64 received, qint64 total) {
 }
 
 void ModelDownloadDialog::onDownloadFinished() {
-  m_outFile.flush();
-  m_outFile.close();
+  // Guard against re-entrancy: abort() emits finished() synchronously, and the
+  // dialog may already have torn the reply down.
+  if (!m_reply)
+    return;
+  QNetworkReply *reply = m_reply;
+  m_reply = nullptr;
 
-  if (m_reply->error() != QNetworkReply::NoError) {
+  m_outFile.flush();
+  if (m_outFile.isOpen())
+    m_outFile.close();
+
+  if (reply->error() != QNetworkReply::NoError) {
     QFile::remove(m_outFile.fileName());
-    m_progressLabel->setText(QString("Error: %1").arg(m_reply->errorString()));
+    m_progressLabel->setText(QString("Error: %1").arg(reply->errorString()));
     m_progressLabel->setStyleSheet("color:#E05050; font-size:8pt;");
   } else {
     QString finalPath = m_modelsDir + "/" + m_downloading.filename;
@@ -382,22 +393,39 @@ void ModelDownloadDialog::onDownloadFinished() {
     populateTable();
   }
 
-  m_reply->deleteLater();
-  m_reply = nullptr;
+  reply->deleteLater();
   setDownloading(false);
 }
 
+void ModelDownloadDialog::abortActiveDownload() {
+  if (!m_reply)
+    return;
+  // Detach first so abort()'s synchronous finished() can't re-enter our slots
+  // and double-free the reply.
+  QNetworkReply *reply = m_reply;
+  m_reply = nullptr;
+  reply->disconnect();
+  reply->abort();
+  reply->deleteLater();
+
+  if (m_outFile.isOpen())
+    m_outFile.close();
+  if (!m_outFile.fileName().isEmpty())
+    QFile::remove(m_outFile.fileName());
+}
+
 void ModelDownloadDialog::onCancelDownload() {
-  if (m_reply) {
-    m_reply->abort();
-    m_reply->deleteLater();
-    m_reply = nullptr;
-  }
-  m_outFile.close();
-  QFile::remove(m_outFile.fileName());
+  abortActiveDownload();
   setDownloading(false);
   m_progressLabel->setText("Download cancelled.");
   m_progressLabel->setStyleSheet("color:#808080; font-size:8pt;");
+}
+
+void ModelDownloadDialog::closeEvent(QCloseEvent *e) {
+  // Closing the dialog (window X) mid-download would otherwise destroy the
+  // reply on the network manager and fire finished() into a dead dialog.
+  abortActiveDownload();
+  QDialog::closeEvent(e);
 }
 
 void ModelDownloadDialog::setDownloading(bool active) {

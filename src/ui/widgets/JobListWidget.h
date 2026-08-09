@@ -12,6 +12,7 @@ public:
   explicit JobListItem(const Job &job, QWidget *parent = nullptr);
   void updateProgress(int percent, const QString &stage);
   void setStatus(JobStatus status);
+  void setError(const QString &error);
   int jobId() const;
 
 private:
@@ -30,6 +31,7 @@ public:
   void addJob(const Job &job);
   void updateJobProgress(int jobId, int percent, const QString &stage);
   void updateJobStatus(int jobId, JobStatus status);
+  void setJobError(int jobId, const QString &error);
   void clearAll();
   int jobCount() const;
 

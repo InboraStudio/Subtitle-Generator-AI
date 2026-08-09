@@ -84,14 +84,22 @@ $$P(Y|X) = \prod_{i=1}^{N} P(y_i | y_1, ..., y_{i-1}, X)$$
     ```
 2.  **Dependency Resolution:**
     ```bash
-    pacman -S mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-qt6-base
+    pacman -S mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-qt6-base mingw-w64-ucrt-x86_64-ffmpeg
     ```
+    > **Important — FFmpeg is required at runtime.** The app shells out to `ffmpeg`/`ffprobe` to decode audio. If it is missing you will see **"Failed: Extracting Audio."** Installing the `...-ffmpeg` package above puts both on your MSYS2 `PATH`. The app also auto-detects FFmpeg installed via **winget** (`winget install Gyan.FFmpeg`), **Chocolatey**, **Scoop**, or copied into the app's `bin\` folder — so no manual `PATH` editing is needed.
 3.  **Build Execution:**
     ```bash
-    mkdir build && cd build
-    cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
-    cmake --build . -j 12
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake --build build -j
     ```
+4.  **Deploy (make it runnable by double-click):**
+    ```bash
+    ./deploy.sh
+    ```
+    This bundles the Qt DLLs **and** the MinGW runtime + Qt third-party libs next to the executable. Skipping it is the usual cause of the error below.
+
+> **Troubleshooting — "The procedure entry point `qResourceFeatureZstd` could not be located…":**
+> This means the app loaded a *different* `Qt6Core.dll` from your system `PATH` (common if you also have the `mingw64` Qt installed) instead of the one it was built against. Run `./deploy.sh` so the exe ships with its own matching DLLs, then launch from `build/bin`.
 
 ---
 

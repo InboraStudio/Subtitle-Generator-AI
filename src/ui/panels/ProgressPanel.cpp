@@ -83,6 +83,8 @@ void ProgressPanel::reset() {
   m_overallCircle->setValue(0);
   m_overallBar->setValue(0);
   m_overallLabel->setText("No jobs queued");
+  m_overallLabel->setStyleSheet("color:#505050; font-size:8pt;");
+  m_overallLabel->setToolTip(QString());
   m_completedLabel->setText("-");
   m_failedLabel->setText("-");
   m_activeLabel->setText("-");
@@ -126,16 +128,27 @@ void ProgressPanel::onJobFinished(int jobId, const QString &) {
 
 void ProgressPanel::onJobFailed(int jobId, const QString &error) {
   m_failedJobs++;
-  Q_UNUSED(error)
   m_jobList->updateJobStatus(jobId, JobStatus::Failed);
+  if (!error.isEmpty())
+    m_jobList->setJobError(jobId, error);
+  // Surface the most recent failure reason above the queue so the user does not
+  // have to open the console to understand what went wrong.
+  QString firstLine = error.section('\n', 0, 0).trimmed();
+  if (!firstLine.isEmpty()) {
+    m_overallLabel->setText("Failed: " + firstLine);
+    m_overallLabel->setStyleSheet("color:#E05050; font-size:8pt;");
+    m_overallLabel->setToolTip(error);
+  }
   updateOverallProgress();
 }
 
 void ProgressPanel::onAllComplete() {
-  int done = m_completedJobs + m_failedJobs;
   m_overallLabel->setText(QString("All done - %1 completed, %2 failed")
                               .arg(m_completedJobs)
                               .arg(m_failedJobs));
+  m_overallLabel->setStyleSheet(
+      m_failedJobs > 0 ? "color:#E0A030; font-size:8pt;"
+                       : "color:#4CAF50; font-size:8pt;");
   m_activeLabel->setText("0");
   m_etaLabel->setText("-");
   m_overallCircle->setValue(100);

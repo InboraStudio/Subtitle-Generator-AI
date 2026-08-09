@@ -19,6 +19,7 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   setAttribute(Qt::WA_TranslucentBackground, false);
   setAttribute(Qt::WA_DeleteOnClose);
 
+  setWindowTitle("Subtitle Generator AI");
   setMinimumSize(960, 640);
   resize(1100, 720);
 
@@ -81,11 +82,13 @@ void MainWindow::setupLayout() {
     auto *logBtn = new QPushButton("Console", m_titleBar);
     logBtn->setObjectName("secondaryBtn");
     logBtn->setCheckable(false);
+    logBtn->setToolTip("Toggle the log console");
     logBtn->setStyleSheet(
-        "min-height:20px; max-height:20px; min-width:50px; max-width:50px; "
-        "font-size:7.5pt; border-radius:4px; padding: 2px;");
+        "QPushButton#secondaryBtn { min-height:24px; max-height:24px; "
+        "min-width:72px; font-size:8.5pt; padding:2px 12px; }");
     connect(logBtn, &QPushButton::clicked, this, &MainWindow::toggleLogPanel);
     tl->addWidget(logBtn);
+    tl->addSpacing(6);
 
     auto *minBtn = new QPushButton(m_titleBar);
     minBtn->setIcon(QIcon(":/icons/minimize.png"));

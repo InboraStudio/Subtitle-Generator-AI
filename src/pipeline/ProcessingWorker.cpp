@@ -1,5 +1,6 @@
 #include "ProcessingWorker.h"
 #include "../core/AudioExtractor.h"
+#include "../core/FfmpegLocator.h"
 #include "../core/SubtitleWriter.h"
 #include "../core/TranscriptionEngine.h"
 #include "../core/TranslationEngine.h"
@@ -29,6 +30,14 @@ void ProcessingWorker::run() {
   QDir().mkpath(tempDir);
 
   QString tempWav = QString("%1/job_%2.wav").arg(tempDir).arg(m_job.id);
+
+  // Preflight: transcoding and (optional) embedding both need ffmpeg. Fail
+  // fast with an actionable message instead of a cryptic mid-pipeline error.
+  if (!FfmpegLocator::isAvailable()) {
+    emit failed(m_job.id, FfmpegLocator::installHint());
+    LOG_ERROR("FFmpeg not found. " + FfmpegLocator::installHint());
+    return;
+  }
 
   emit progress(m_job.id, 5, "Extracting audio");
   if (!extractAudio(tempWav))
@@ -88,12 +97,7 @@ void ProcessingWorker::run() {
   }
 
   if (m_job.embedSubtitles && !m_job.outputVideoPath.isEmpty()) {
-    QString ffmpegPath =
-        QCoreApplication::applicationDirPath() + "/bin/ffmpeg.exe";
-    if (!QFileInfo::exists(ffmpegPath)) {
-      ffmpegPath = "ffmpeg";
-    }
-    VideoEmbedder embedder(ffmpegPath);
+    VideoEmbedder embedder(FfmpegLocator::ffmpegPath());
     connect(&embedder, &VideoEmbedder::logMessage,
             [this](const QString &msg) { LOG_INFO(msg); });
     connect(&embedder, &VideoEmbedder::progress, [this](int p) {
@@ -118,19 +122,25 @@ void ProcessingWorker::run() {
 }
 
 bool ProcessingWorker::extractAudio(const QString &tempWav) {
-  QString ffmpegPath =
-      QCoreApplication::applicationDirPath() + "/bin/ffmpeg.exe";
-  if (!QFileInfo::exists(ffmpegPath)) {
-    ffmpegPath = "ffmpeg";
-  }
-  AudioExtractor extractor(ffmpegPath);
+  AudioExtractor extractor(FfmpegLocator::ffmpegPath());
   connect(&extractor, &AudioExtractor::logMessage,
           [this](const QString &msg) { LOG_INFO(msg); });
   connect(&extractor, &AudioExtractor::progress, [this](int p) {
-    emit progress(m_job.id, p / 5, "Extracting audio");
+    // Extraction occupies the 5-20% slice of the overall job progress.
+    emit progress(m_job.id, 5 + p * 15 / 100, "Extracting audio");
   });
+
+  // Capture the detailed reason so the user sees *why* it failed instead of a
+  // generic message.
+  QString errorReason;
+  connect(&extractor, &AudioExtractor::failed,
+          [&errorReason](const QString &err) { errorReason = err; });
+
   if (!extractor.extract(m_job.inputPath, tempWav)) {
-    emit failed(m_job.id, "Audio extraction failed");
+    if (errorReason.isEmpty())
+      errorReason = "Audio extraction failed";
+    LOG_ERROR(QString("Job #%1: %2").arg(m_job.id).arg(errorReason));
+    emit failed(m_job.id, errorReason);
     return false;
   }
   return true;
