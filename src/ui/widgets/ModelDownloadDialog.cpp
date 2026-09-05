@@ -10,7 +10,11 @@
 #include <QStandardPaths>
 #include <QUrl>
 #include <QVBoxLayout>
+#ifdef Q_OS_WIN
 #include <windows.h>
+#elifdef Q_OS_LINUX
+#include <sys/sysinfo.h>
+#endif
 
 static const QString HF_BASE =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
@@ -439,10 +443,17 @@ void ModelDownloadDialog::setDownloading(bool active) {
 }
 
 int ModelDownloadDialog::detectSystemRamMB() const {
+#ifdef Q_OS_WIN
   MEMORYSTATUSEX ms;
   ms.dwLength = sizeof(ms);
   if (GlobalMemoryStatusEx(&ms))
     return static_cast<int>(ms.ullTotalPhys / (1024 * 1024));
+#elifdef Q_OS_LINUX
+  struct sysinfo si;
+  if (sysinfo(&si) == 0)
+    return static_cast<int>((quint64(si.totalram) * si.mem_unit) /
+                            (1024 * 1024));
+#endif
   return 4096;
 }
 
