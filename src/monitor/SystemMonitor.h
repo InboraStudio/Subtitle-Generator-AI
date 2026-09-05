@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QString>
 #include <QTimer>
 #include <atomic>
 
@@ -37,6 +38,16 @@ private:
   QTimer m_timer;
   SystemStats m_current;
   bool m_gpuInitialized = false;
+  QString m_gpuName;
+
+#ifdef Q_OS_WIN
   void *m_cpuQuery = nullptr;
   void *m_cpuCounter = nullptr;
+#elifdef Q_OS_LINUX
+  // Previous /proc/stat sample, so CPU load is a delta between polls.
+  quint64 m_prevIdle = 0;
+  quint64 m_prevTotal = 0;
+  // sysfs node exposing GPU utilisation (amdgpu/i915)
+  QString m_gpuBusyPath;
+#endif
 };
