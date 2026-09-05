@@ -7,8 +7,53 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC OFF)
 
-option(WITH_CUDA "Enable CUDA acceleration for whisper.cpp" OFF)
+# GPU acceleration backend for whisper.cpp/ggml. Vulkan is the recommended
+# choice on AMD and Intel: it needs no vendor SDK, and on RDNA/Arc hardware ggml
+# picks up cooperative-matrix (tensor core) paths through it.
+set(GPU_BACKEND "none" CACHE STRING
+    "GPU backend for whisper.cpp: none, vulkan, cuda or hip")
+set_property(CACHE GPU_BACKEND PROPERTY STRINGS none vulkan cuda hip)
+
+# Superseded by GPU_BACKEND. Kept for backwards-compatibility.
+option(WITH_CUDA "Deprecated: use -DGPU_BACKEND=cuda" OFF)
+
 option(USE_BUNDLED_WHISPER "Use bundled whisper.cpp sources" ON)
+
+string(TOLOWER "${GPU_BACKEND}" _gpu_backend)
+
+if(WITH_CUDA)
+    if(_gpu_backend STREQUAL "none")
+        message(WARNING "WITH_CUDA is deprecated; prefer -DGPU_BACKEND=cuda")
+        set(_gpu_backend "cuda")
+    elseif(NOT _gpu_backend STREQUAL "cuda")
+        message(FATAL_ERROR
+            "WITH_CUDA=ON conflicts with GPU_BACKEND=${GPU_BACKEND}. "
+            "Set only GPU_BACKEND.")
+    endif()
+endif()
+
+# Turn everything off first to reset cached variables when switching backends
+set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+set(GGML_CUDA OFF CACHE BOOL "" FORCE)
+set(GGML_HIP OFF CACHE BOOL "" FORCE)
+
+# These have to be set before whisper.cpp is added, so ggml sees them.
+if(_gpu_backend STREQUAL "vulkan")
+    set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+elseif(_gpu_backend STREQUAL "cuda")
+    set(GGML_CUDA ON CACHE BOOL "" FORCE)
+elseif(_gpu_backend STREQUAL "hip")
+    set(GGML_HIP ON CACHE BOOL "" FORCE)
+elseif(NOT _gpu_backend STREQUAL "none")
+    message(FATAL_ERROR
+        "Unknown GPU_BACKEND '${GPU_BACKEND}' (expected none, vulkan, cuda or hip)")
+endif()
+
+if(_gpu_backend STREQUAL "none")
+    message(STATUS "GPU backend: none (CPU inference only)")
+else()
+    message(STATUS "GPU backend: ${_gpu_backend}")
+endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Core Concurrent Network)
 
