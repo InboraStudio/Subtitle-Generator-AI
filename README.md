@@ -32,7 +32,7 @@ This repository provides a state-of-the-art, entirely local AI subtitle generati
 | :--- | :--- | :--- |
 | **Privacy Architecture** | 100% Local Inference | Zero data exfiltration; works in air-gapped environments. |
 | **Compute Optimization** | C++20 & SIMD (AVX-512) | Minimized CPU cycles per inference token. |
-| **Acceleration Layers** | NVIDIA CUDA, Apple Metal, Vulkan | Leverages discrete and integrated GPU hardware. |
+| **Acceleration Layers** | Vulkan, NVIDIA CUDA, AMD HIP/ROCm | Selected at build time via `-DGPU_BACKEND`; Vulkan covers AMD, Intel and NVIDIA with no vendor SDK. |
 | **Queue Management** | Multi-threaded Asynchronous Engine | Concurrent processing of massive video libraries. |
 | **Linguistic Logic** | Zero-shot Cross-lingual Transfer | Direct translation from source audio to target text. |
 | **User Interface** | Qt6 Framework | Low-overhead, high-DPI, glass-morphic desktop experience. |
@@ -73,30 +73,111 @@ $$P(Y|X) = \prod_{i=1}^{N} P(y_i | y_1, ..., y_{i-1}, X)$$
 ### Prerequisites
 *   **CMake:** 3.25 or newer
 *   **Compiler:** GCC 13+, MSVC 2022, or Clang 15+
-*   **Framework:** Qt 6.8.x
+*   **Framework:** Qt 6.8 or newer (Widgets, Core, Concurrent, Network)
 *   **Dependencies:** FFmpeg (for stream decoding)
 
-### Compiling from Source (UCRT64/MinGW)
-1.  **Repository Initialization:**
-    ```bash
-    git clone https://github.com/InboraStudio/Subtitle-Generator-AI.git
-    cd Subtitle-Generator-AI
-    ```
-2.  **Dependency Resolution:**
-    ```bash
-    pacman -S mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-qt6-base mingw-w64-ucrt-x86_64-ffmpeg
-    ```
-    > **Important — FFmpeg is required at runtime.** The app shells out to `ffmpeg`/`ffprobe` to decode audio. If it is missing you will see **"Failed: Extracting Audio."** Installing the `...-ffmpeg` package above puts both on your MSYS2 `PATH`. The app also auto-detects FFmpeg installed via **winget** (`winget install Gyan.FFmpeg`), **Chocolatey**, **Scoop**, or copied into the app's `bin\` folder — so no manual `PATH` editing is needed.
-3.  **Build Execution:**
-    ```bash
-    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-    cmake --build build -j
-    ```
-4.  **Deploy (make it runnable by double-click):**
-    ```bash
-    ./deploy.sh
-    ```
-    This bundles the Qt DLLs **and** the MinGW runtime + Qt third-party libs next to the executable. Skipping it is the usual cause of the error below.
+> **FFmpeg is required at runtime.** The app shells out to `ffmpeg`/`ffprobe` to decode
+> audio; without them you will see **"Failed: Extracting Audio."** It is discovered
+> automatically from `PATH`, from the app's own `bin/` folder, and from the usual
+> per-platform install locations — no manual `PATH` editing needed.
+
+### GPU Acceleration (`-DGPU_BACKEND`)
+Inference runs on the CPU by default. Select a GPU backend at configure time:
+
+| Value | Hardware | Additional build dependencies |
+| :--- | :--- | :--- |
+| `none` *(default)* | — | none |
+| `vulkan` | AMD, Intel, NVIDIA | Vulkan headers + loader, `glslc` (shaderc), SPIRV headers |
+| `cuda` | NVIDIA | CUDA Toolkit |
+| `hip` | AMD (ROCm) | ROCm / HIP toolchain |
+
+**Vulkan is the recommended backend on AMD and Intel.** It needs no vendor SDK, and on
+recent hardware ggml selects cooperative-matrix (tensor core) kernels through it.
+
+### Compiling from Source
+
+**1. Repository Initialization**
+```bash
+git clone https://github.com/InboraStudio/Subtitle-Generator-AI.git
+cd Subtitle-Generator-AI
+```
+
+---
+
+#### Linux (native)
+
+**2. Dependency Resolution**
+```bash
+# Arch / CachyOS
+sudo pacman -S base-devel cmake ninja qt6-base ffmpeg
+
+# Debian / Ubuntu
+sudo apt install build-essential cmake ninja-build qt6-base-dev ffmpeg
+
+# Fedora
+sudo dnf install gcc-c++ cmake ninja-build qt6-qtbase-devel ffmpeg
+```
+
+For a Vulkan build, add the shader toolchain and headers:
+```bash
+# Arch / CachyOS
+sudo pacman -S vulkan-headers spirv-headers shaderc vulkan-icd-loader
+# ...plus your driver ICD, e.g. vulkan-radeon (AMD) or vulkan-intel (Intel)
+
+# Debian / Ubuntu
+sudo apt install libvulkan-dev spirv-headers glslc
+
+# Fedora
+sudo dnf install vulkan-headers spirv-headers-devel glslc vulkan-loader-devel
+```
+
+**3. Build Execution**
+```bash
+# CPU only
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+
+# GPU (e.g. vulkan, see table above)
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGPU_BACKEND=vulkan
+cmake --build build -j
+```
+
+Confirm the backend was picked up in the configure output:
+```
+-- GPU backend: vulkan
+-- Including Vulkan backend
+```
+
+**4. Run**
+```bash
+./build/bin/SubtitleGeneratorAI
+```
+No deployment step is required on Linux; the binary links the system Qt directly.
+
+---
+
+#### Windows (UCRT64/MSYS2)
+
+**2. Dependency Resolution**
+```bash
+pacman -S mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-qt6-base mingw-w64-ucrt-x86_64-ffmpeg
+```
+FFmpeg is also auto-detected when installed via **winget** (`winget install Gyan.FFmpeg`),
+**Chocolatey**, or **Scoop**, or when copied into the app's `bin\` folder.
+
+**3. Build Execution**
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
+
+**4. Deploy (make it runnable by double-click)**
+```bash
+./deploy.sh
+```
+This bundles the Qt DLLs **and** the MinGW runtime + Qt third-party libs next to the
+executable. Skipping it is the usual cause of the error below. `deploy.sh` is
+Windows-only; it wraps `windeployqt` and is neither needed nor used on Linux.
 
 > **Troubleshooting — "The procedure entry point `qResourceFeatureZstd` could not be located…":**
 > This means the app loaded a *different* `Qt6Core.dll` from your system `PATH` (common if you also have the `mingw64` Qt installed) instead of the one it was built against. Run `./deploy.sh` so the exe ships with its own matching DLLs, then launch from `build/bin`.
