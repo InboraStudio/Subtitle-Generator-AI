@@ -1,0 +1,173 @@
+# Builds Linux / macOS / Windows packages and attaches them to a GitHub Release.
+#
+#   git tag v2.1.0 && git push origin v2.1.0     -> builds + publishes the release
+#   Actions tab -> "Release" -> "Run workflow"    -> test build only (no release)
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # Portable binaries: never compile ggml with -march=native on CI, or the app
+  # crashes with "illegal instruction" on users' older CPUs.
+  CMAKE_COMMON: >-
+    -DCMAKE_BUILD_TYPE=Release
+    -DGGML_NATIVE=OFF
+    -DBUILD_SHARED_LIBS=OFF
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux,         os: ubuntu-22.04,     kind: linux }
+          - { name: macOS-arm64,   os: macos-14,         kind: mac, arch: arm64 }
+          - { name: macOS-x64,     os: macos-15-intel,   kind: mac, arch: x86_64 }
+          - { name: Windows,       os: windows-latest,   kind: windows }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version from tag
+        shell: bash
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == tag ]] || V="0.0.0-dev"
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+
+      # third_party/whisper.cpp is a gitlink with no .gitmodules entry, so
+      # `submodules: true` can't fetch it. Pull the exact pinned commit instead.
+      - name: Fetch pinned whisper.cpp
+        shell: bash
+        run: |
+          COMMIT=$(git ls-tree HEAD third_party/whisper.cpp | awk '{print $3}')
+          echo "whisper.cpp @ $COMMIT"
+          rm -rf third_party/whisper.cpp
+          git init -q third_party/whisper.cpp
+          git -C third_party/whisper.cpp remote add origin https://github.com/ggml-org/whisper.cpp.git
+          git -C third_party/whisper.cpp fetch -q --depth 1 origin "$COMMIT"
+          git -C third_party/whisper.cpp checkout -q FETCH_HEAD
+
+      # ---------------------------------------------------------------- Linux
+      - name: Install Qt (Linux/macOS)
+        if: matrix.kind != 'windows'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          cache: true
+
+      - name: Build + AppImage (Linux)
+        if: matrix.kind == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libfuse2 libxcb-cursor0 \
+            libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0
+          cmake -S . -B build -G Ninja $CMAKE_COMMON
+          cmake --build build -j
+
+          mkdir -p AppDir/usr/bin
+          cp build/bin/SubtitleGeneratorAI AppDir/usr/bin/
+          cat > SubtitleGeneratorAI.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Subtitle Generator AI
+          Exec=SubtitleGeneratorAI
+          Icon=SubtitleGeneratorAI
+          Categories=AudioVideo;Video;
+          EOF
+          cp resources/icons/app.svg SubtitleGeneratorAI.svg
+
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
+          export QMAKE="$QT_ROOT_DIR/bin/qmake"
+          export LDAI_OUTPUT="SubtitleGeneratorAI-Linux-${VERSION}-x86_64.AppImage"
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            --desktop-file SubtitleGeneratorAI.desktop \
+            --icon-file SubtitleGeneratorAI.svg \
+            --plugin qt --output appimage
+          mkdir -p dist && mv "$LDAI_OUTPUT" dist/
+
+      # ---------------------------------------------------------------- macOS
+      - name: Build + DMG (macOS)
+        if: matrix.kind == 'mac'
+        run: |
+          brew install ninja
+          cmake -S . -B build -G Ninja $CMAKE_COMMON \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DCMAKE_MACOSX_BUNDLE=ON
+          cmake --build build -j
+
+          APP=$(find build -maxdepth 3 -name 'SubtitleGeneratorAI.app' | head -1)
+          echo "Bundle: $APP"
+          "$QT_ROOT_DIR/bin/macdeployqt" "$APP" -dmg
+          mkdir -p dist
+          mv "${APP%.app}.dmg" "dist/SubtitleGeneratorAI-Mac-${VERSION}-${{ matrix.arch }}.dmg"
+
+      # -------------------------------------------------------------- Windows
+      - name: Set up MSYS2 (Windows)
+        if: matrix.kind == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-tools
+            zip
+
+      - name: Build + deploy (Windows)
+        if: matrix.kind == 'windows'
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja $CMAKE_COMMON
+          cmake --build build -j
+          ./deploy.sh build/bin/SubtitleGeneratorAI.exe
+          mkdir -p dist
+          (cd build/bin && zip -qr "../../dist/SubtitleGeneratorAI-Windows-${VERSION}-portable.zip" .)
+
+      - name: Installer (Windows)
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:VERSION" installer.iss
+          Move-Item installer_output\SubtitleGeneratorAI_Setup.exe "dist\SubtitleGeneratorAI-Setup-$env:VERSION.exe"
+
+      # ------------------------------------------------------------ all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
