@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -53,8 +54,18 @@ MainWindow::~MainWindow() {
 
 void MainWindow::loadStylesheet() {
   QFile f(":/styles/dark.qss");
-  if (f.open(QFile::ReadOnly | QFile::Text))
-    qApp->setStyleSheet(QString::fromUtf8(f.readAll()));
+  if (!f.open(QFile::ReadOnly | QFile::Text))
+    return;
+  QString qss = QString::fromUtf8(f.readAll());
+#ifndef Q_OS_WIN
+  // Segoe UI only ships with Windows; elsewhere Qt spends ~100 ms building
+  // font aliases to replace it, so use the platform UI font instead.
+  qss.replace(QStringLiteral("\"Segoe UI\""),
+              QStringLiteral("\"%1\"").arg(
+                  QFontDatabase::systemFont(QFontDatabase::GeneralFont)
+                      .family()));
+#endif
+  qApp->setStyleSheet(qss);
 }
 
 void MainWindow::setupLayout() {
