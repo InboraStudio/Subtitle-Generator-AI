@@ -12,6 +12,13 @@
 #include <QStringList>
 #endif
 
+#ifdef Q_OS_MACOS
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOKitLib.h>
+#include <mach/mach.h>
+#include <sys/sysctl.h>
+#endif
+
 SystemMonitor::SystemMonitor(QObject *parent) : QObject(parent) {
   connect(&m_timer, &QTimer::timeout, this, &SystemMonitor::poll);
 
@@ -24,8 +31,8 @@ SystemMonitor::SystemMonitor(QObject *parent) : QObject(parent) {
   PdhCollectQueryData(query);
   m_cpuQuery = query;
   m_cpuCounter = counter;
-#elif defined(Q_OS_LINUX)
-  // Prime the /proc/stat delta
+#else
+  // Prime the CPU tick delta
   queryCpu();
 #endif
 }
@@ -138,6 +145,29 @@ double SystemMonitor::queryCpu() {
   if (dTotal == 0)
     return m_current.cpuPercent;
   return qBound(0.0, 100.0 * (dTotal - dIdle) / dTotal, 100.0);
+#elif defined(Q_OS_MACOS)
+  host_cpu_load_info_data_t load;
+  mach_msg_type_number_t count = HOST_CPU_LOAD_INFO_COUNT;
+  if (host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO,
+                      reinterpret_cast<host_info_t>(&load),
+                      &count) != KERN_SUCCESS)
+    return 0.0;
+
+  quint64 total = 0;
+  for (int i = 0; i < CPU_STATE_MAX; ++i)
+    total += load.cpu_ticks[i];
+  const quint64 idle = load.cpu_ticks[CPU_STATE_IDLE];
+
+  const quint64 dTotal = total - m_prevTotal;
+  const quint64 dIdle = idle - m_prevIdle;
+  m_prevTotal = total;
+  m_prevIdle = idle;
+
+  if (dTotal == 0)
+    return m_current.cpuPercent;
+  return qBound(0.0, 100.0 * (dTotal - dIdle) / dTotal, 100.0);
+#else
+  return 0.0;
 #endif
 }
 
@@ -175,6 +205,29 @@ double SystemMonitor::queryRam(qint64 &usedMB, qint64 &totalMB) {
   totalMB = totalKB / 1024;
   usedMB = (totalKB - availKB) / 1024;
   return qBound(0.0, 100.0 * usedMB / totalMB, 100.0);
+#elif defined(Q_OS_MACOS)
+  quint64 memsize = 0;
+  size_t len = sizeof(memsize);
+  if (sysctlbyname("hw.memsize", &memsize, &len, nullptr, 0) != 0 ||
+      memsize == 0)
+    return 0.0;
+
+  vm_statistics64_data_t vm;
+  mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+  if (host_statistics64(mach_host_self(), HOST_VM_INFO64,
+                        reinterpret_cast<host_info64_t>(&vm),
+                        &count) != KERN_SUCCESS)
+    return 0.0;
+
+  // Activity Monitor's "Memory Used": app memory + wired + compressed
+  const quint64 usedPages = quint64(vm.internal_page_count) -
+                            vm.purgeable_count + vm.wire_count +
+                            vm.compressor_page_count;
+  totalMB = static_cast<qint64>(memsize / (1024 * 1024));
+  usedMB = static_cast<qint64>(usedPages * vm_kernel_page_size / (1024 * 1024));
+  return qBound(0.0, 100.0 * usedMB / totalMB, 100.0);
+#else
+  return 0.0;
 #endif
 }
 
@@ -243,5 +296,58 @@ double SystemMonitor::queryGpu(bool &available, QString &name) {
   available = true;
   name = m_gpuName;
   return qBound(0.0, pct, 100.0);
+#elif defined(Q_OS_MACOS)
+  // The GPU driver (AGXAccelerator on Apple Silicon) publishes live counters
+  // in its IORegistry "PerformanceStatistics" dictionary; no root needed.
+  io_iterator_t iter = IO_OBJECT_NULL;
+  if (IOServiceGetMatchingServices(kIOMainPortDefault,
+                                   IOServiceMatching("IOAccelerator"),
+                                   &iter) != KERN_SUCCESS)
+    return 0.0;
+
+  double pct = -1.0;
+  io_registry_entry_t entry;
+  while (pct < 0.0 && (entry = IOIteratorNext(iter)) != IO_OBJECT_NULL) {
+    CFMutableDictionaryRef props = nullptr;
+    if (IORegistryEntryCreateCFProperties(entry, &props, kCFAllocatorDefault,
+                                          0) == KERN_SUCCESS &&
+        props) {
+      const auto stats = static_cast<CFDictionaryRef>(
+          CFDictionaryGetValue(props, CFSTR("PerformanceStatistics")));
+      if (stats && CFGetTypeID(stats) == CFDictionaryGetTypeID()) {
+        const auto util = static_cast<CFNumberRef>(
+            CFDictionaryGetValue(stats, CFSTR("Device Utilization %")));
+        int value = 0;
+        if (util && CFGetTypeID(util) == CFNumberGetTypeID() &&
+            CFNumberGetValue(util, kCFNumberIntType, &value))
+          pct = value;
+      }
+
+      if (pct >= 0.0 && m_gpuName.isEmpty()) {
+        const auto model = static_cast<CFStringRef>(
+            CFDictionaryGetValue(props, CFSTR("model")));
+        if (model && CFGetTypeID(model) == CFStringGetTypeID()) {
+          char buf[128];
+          if (CFStringGetCString(model, buf, sizeof(buf),
+                                 kCFStringEncodingUTF8))
+            m_gpuName = QString::fromUtf8(buf);
+        }
+        if (m_gpuName.isEmpty())
+          m_gpuName = QStringLiteral("Apple GPU");
+      }
+      CFRelease(props);
+    }
+    IOObjectRelease(entry);
+  }
+  IOObjectRelease(iter);
+
+  if (pct < 0.0)
+    return 0.0;
+
+  available = true;
+  name = m_gpuName;
+  return qBound(0.0, pct, 100.0);
+#else
+  return 0.0;
 #endif
 }

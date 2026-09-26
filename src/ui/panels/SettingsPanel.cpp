@@ -308,8 +308,7 @@ void SettingsPanel::browseOutputDir() {
 
 void SettingsPanel::browseModels() {
   QString path = QFileDialog::getOpenFileName(
-      this, "Select Model File",
-      QCoreApplication::applicationDirPath() + "/models",
+      this, "Select Model File", TranscriptionEngine::userModelsDir(),
       "Model Files (*.bin *.gguf);;All Files (*)");
   if (!path.isEmpty()) {
     m_modelCombo->insertItem(0, QFileInfo(path).fileName(), path);
@@ -319,8 +318,7 @@ void SettingsPanel::browseModels() {
 
 void SettingsPanel::refreshModels() {
   m_modelCombo->clear();
-  QString modelsDir = QCoreApplication::applicationDirPath() + "/models";
-  QStringList models = TranscriptionEngine::discoverModels(modelsDir);
+  QStringList models = TranscriptionEngine::discoverModels();
   if (models.isEmpty()) {
     m_modelCombo->addItem("No models found - click 'Get Models'", "");
   } else {
@@ -330,8 +328,7 @@ void SettingsPanel::refreshModels() {
 }
 
 void SettingsPanel::openModelManager() {
-  QString modelsDir = QCoreApplication::applicationDirPath() + "/models";
-  ModelDownloadDialog dlg(modelsDir, this);
+  ModelDownloadDialog dlg(TranscriptionEngine::userModelsDir(), this);
   dlg.exec();
   refreshModels();
   if (!dlg.lastDownloadedPath().isEmpty())

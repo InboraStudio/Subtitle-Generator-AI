@@ -1,3 +1,4 @@
+#include "core/TranscriptionEngine.h"
 #include "logging/Logger.h"
 #include "ui/MainWindow.h"
 #include <QApplication>
@@ -18,7 +19,7 @@ int main(int argc, char *argv[]) {
 
   QDir::setCurrent(QCoreApplication::applicationDirPath());
 
-  QDir(QCoreApplication::applicationDirPath() + "/models").mkpath(".");
+  QDir(TranscriptionEngine::userModelsDir()).mkpath(".");
   QDir(QCoreApplication::applicationDirPath() + "/bin").mkpath(".");
   QDir(QCoreApplication::applicationDirPath() + "/logs").mkpath(".");
 

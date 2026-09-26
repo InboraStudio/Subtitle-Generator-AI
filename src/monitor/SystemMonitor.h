@@ -43,10 +43,13 @@ private:
 #ifdef Q_OS_WIN
   void *m_cpuQuery = nullptr;
   void *m_cpuCounter = nullptr;
-#elif defined(Q_OS_LINUX)
-  // Previous /proc/stat sample, so CPU load is a delta between polls.
+#else
+  // Previous CPU tick sample (/proc/stat on Linux, host_statistics on
+  // macOS), so CPU load is a delta between polls.
   quint64 m_prevIdle = 0;
   quint64 m_prevTotal = 0;
+#endif
+#ifdef Q_OS_LINUX
   // sysfs node exposing GPU utilisation (amdgpu/i915)
   QString m_gpuBusyPath;
 #endif

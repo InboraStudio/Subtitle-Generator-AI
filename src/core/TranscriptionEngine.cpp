@@ -1,7 +1,10 @@
 #include "TranscriptionEngine.h"
+#include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
+#include <QSet>
+#include <QStandardPaths>
 #include <QThread>
 
 #ifdef WHISPER_AVAILABLE
@@ -98,11 +101,20 @@ bool TranscriptionEngine::transcribe(const QString &wavPath,
   wparams.print_realtime = false;
   wparams.print_special = false;
   wparams.translate = false;
+  // Must outlive whisper_full(), which reads wparams.language
+  const QByteArray languageBytes = language.toLocal8Bit();
   wparams.language = (language == "auto" || language.isEmpty())
                          ? nullptr
-                         : language.toLocal8Bit().constData();
+                         : languageBytes.constData();
   wparams.n_threads = qMax(1, QThread::idealThreadCount() - 1);
   wparams.beam_search.beam_size = fastMode ? 1 : 5;
+  // Report progress while whisper_full() runs; it invokes the callback on
+  // this thread, so emitting directly is safe.
+  wparams.progress_callback = [](whisper_context *, whisper_state *,
+                                 int percent, void *userData) {
+    emit static_cast<TranscriptionEngine *>(userData)->progress(percent);
+  };
+  wparams.progress_callback_user_data = this;
 
   whisper_context *ctx = static_cast<whisper_context *>(m_ctx);
   if (whisper_full(ctx, wparams, pcmf32.data(), pcmf32.size()) != 0) {
@@ -122,7 +134,6 @@ bool TranscriptionEngine::transcribe(const QString &wavPath,
         QString::fromUtf8(whisper_full_get_segment_text(ctx, i)).trimmed();
     outSegments.append(seg);
     emit segmentReady(seg);
-    emit progress(static_cast<int>(100.0 * i / nSeg));
   }
 
   emit progress(100);
@@ -149,6 +160,33 @@ QStringList TranscriptionEngine::discoverModels(const QString &modelsDir) {
   QDirIterator it(modelsDir, {"*.bin", "*.gguf"}, QDir::Files);
   while (it.hasNext())
     models.append(it.next());
+  return models;
+}
+
+QString TranscriptionEngine::userModelsDir() {
+  // e.g. ~/Library/Application Support/SubtitleGeneratorAI/models,
+  // ~/.local/share/SubtitleGeneratorAI/models, %LOCALAPPDATA%/SubtitleGeneratorAI/models
+  return QStandardPaths::writableLocation(
+             QStandardPaths::GenericDataLocation) +
+         "/" + QCoreApplication::applicationName() + "/models";
+}
+
+QString TranscriptionEngine::bundledModelsDir() {
+  return QCoreApplication::applicationDirPath() + "/models";
+}
+
+QStringList TranscriptionEngine::discoverModels() {
+  QStringList models;
+  QSet<QString> seen;
+  for (const QString &dir : {userModelsDir(), bundledModelsDir()}) {
+    for (const QString &m : discoverModels(dir)) {
+      const QString name = QFileInfo(m).fileName();
+      if (!seen.contains(name)) {
+        seen.insert(name);
+        models.append(m);
+      }
+    }
+  }
   return models;
 }
 

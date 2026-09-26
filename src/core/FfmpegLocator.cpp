@@ -47,6 +47,10 @@ QStringList candidateDirectories() {
 
   // Typical manual-install locations.
   dirs << "C:/ffmpeg/bin" << "C:/Program Files/ffmpeg/bin";
+#elif defined(Q_OS_MACOS)
+  // Native Apple Silicon Homebrew first: /usr/local is the Intel (Rosetta)
+  // prefix and may hold a stale x86_64 ffmpeg with missing dylibs.
+  dirs << "/opt/homebrew/bin" << "/usr/local/bin" << "/usr/bin";
 #else
   dirs << "/usr/local/bin" << "/usr/bin" << "/opt/homebrew/bin"
        << "/snap/bin";

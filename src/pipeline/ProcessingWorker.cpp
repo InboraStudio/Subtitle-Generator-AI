@@ -39,7 +39,7 @@ void ProcessingWorker::run() {
     return;
   }
 
-  emit progress(m_job.id, 5, "Extracting audio");
+  emit progress(m_job.id, 1, "Extracting audio");
   if (!extractAudio(tempWav))
     return;
   if (m_cancelled) {
@@ -47,15 +47,15 @@ void ProcessingWorker::run() {
     return;
   }
 
-  emit progress(m_job.id, 20, "Transcribing");
+  emit progress(m_job.id, 5, "Transcribing");
   QStringList srtLines;
   QList<TranscriptSegment> segments;
   {
     TranscriptionEngine engine;
     connect(&engine, &TranscriptionEngine::logMessage,
-            [this](const QString &msg) { LOG_INFO(msg); });
+            [](const QString &msg) { LOG_INFO(msg); });
     connect(&engine, &TranscriptionEngine::progress, [this](int p) {
-      emit progress(m_job.id, 20 + p * 55 / 100, "Transcribing");
+      emit progress(m_job.id, 5 + p * 80 / 100, "Transcribing");
     });
     if (!engine.loadModel(m_job.modelPath)) {
       emit failed(m_job.id, "Could not load transcription model");
@@ -76,10 +76,10 @@ void ProcessingWorker::run() {
   }
 
   if (m_job.enableTranslation && !m_job.targetLanguage.isEmpty()) {
-    emit progress(m_job.id, 76, "Translating");
+    emit progress(m_job.id, 86, "Translating");
     TranslationEngine translator;
     connect(&translator, &TranslationEngine::logMessage,
-            [this](const QString &msg) { LOG_INFO(msg); });
+            [](const QString &msg) { LOG_INFO(msg); });
     translator.translate(segments, m_job.sourceLanguage, m_job.targetLanguage);
   }
 
@@ -87,7 +87,7 @@ void ProcessingWorker::run() {
   {
     SubtitleWriter writer;
     connect(&writer, &SubtitleWriter::logMessage,
-            [this](const QString &msg) { LOG_INFO(msg); });
+            [](const QString &msg) { LOG_INFO(msg); });
     if (!writer.writeSrt(segments, m_job.outputSrtPath)) {
       emit failed(m_job.id,
                   QString("Failed to write SRT: %1").arg(m_job.outputSrtPath));
@@ -99,7 +99,7 @@ void ProcessingWorker::run() {
   if (m_job.embedSubtitles && !m_job.outputVideoPath.isEmpty()) {
     VideoEmbedder embedder(FfmpegLocator::ffmpegPath());
     connect(&embedder, &VideoEmbedder::logMessage,
-            [this](const QString &msg) { LOG_INFO(msg); });
+            [](const QString &msg) { LOG_INFO(msg); });
     connect(&embedder, &VideoEmbedder::progress, [this](int p) {
       emit progress(m_job.id, 92 + p * 7 / 100, "Embedding");
     });
@@ -124,10 +124,11 @@ void ProcessingWorker::run() {
 bool ProcessingWorker::extractAudio(const QString &tempWav) {
   AudioExtractor extractor(FfmpegLocator::ffmpegPath());
   connect(&extractor, &AudioExtractor::logMessage,
-          [this](const QString &msg) { LOG_INFO(msg); });
+          [](const QString &msg) { LOG_INFO(msg); });
   connect(&extractor, &AudioExtractor::progress, [this](int p) {
-    // Extraction occupies the 5-20% slice of the overall job progress.
-    emit progress(m_job.id, 5 + p * 15 / 100, "Extracting audio");
+    // Extraction is fast (hundreds of times realtime), so it only gets the
+    // 1-5% slice; transcription dominates wall time and gets 5-85%.
+    emit progress(m_job.id, 1 + p * 4 / 100, "Extracting audio");
   });
 
   // Capture the detailed reason so the user sees *why* it failed instead of a
