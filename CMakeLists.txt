@@ -49,7 +49,10 @@ elseif(NOT _gpu_backend STREQUAL "none")
         "Unknown GPU_BACKEND '${GPU_BACKEND}' (expected none, vulkan, cuda or hip)")
 endif()
 
-if(_gpu_backend STREQUAL "none")
+if(_gpu_backend STREQUAL "none" AND APPLE)
+    # ggml enables GGML_METAL by default on Apple platforms
+    message(STATUS "GPU backend: Metal")
+elseif(_gpu_backend STREQUAL "none")
     message(STATUS "GPU backend: none (CPU inference only)")
 else()
     message(STATUS "GPU backend: ${_gpu_backend}")
@@ -168,6 +171,14 @@ if(WIN32)
         pdh
         psapi
         winmm
+    )
+endif()
+
+if(APPLE)
+    # GPU utilisation via the IOAccelerator PerformanceStatistics dictionary
+    target_link_libraries(SubtitleGeneratorAI PRIVATE
+        "-framework IOKit"
+        "-framework CoreFoundation"
     )
 endif()
 

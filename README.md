@@ -91,6 +91,9 @@ Inference runs on the CPU by default. Select a GPU backend at configure time:
 | `cuda` | NVIDIA | CUDA Toolkit |
 | `hip` | AMD (ROCm) | ROCm / HIP toolchain |
 
+On **macOS**, ggml enables its **Metal** backend automatically; leave `GPU_BACKEND` at
+`none` and Apple Silicon GPUs are used without any extra dependencies.
+
 **Vulkan is the recommended backend on AMD and Intel.** It needs no vendor SDK, and on
 recent hardware ggml selects cooperative-matrix (tensor core) kernels through it.
 
@@ -153,6 +156,38 @@ Confirm the backend was picked up in the configure output:
 ./build/bin/SubtitleGeneratorAI
 ```
 No deployment step is required on Linux; the binary links the system Qt directly.
+
+---
+
+#### macOS (Apple Silicon)
+
+**2. Dependency Resolution**
+```bash
+make deps      # brew install cmake ninja qt ffmpeg
+```
+
+**3. Build Execution**
+```bash
+make           # fetches the pinned whisper.cpp, configures and builds
+```
+The `Makefile` always builds for the machine's native architecture (arm64 on Apple
+Silicon, even from a Rosetta terminal) and uses the matching Homebrew prefix, so an
+Intel Homebrew under `/usr/local` or a conda Qt cannot leak into the build.
+`make doctor` prints the detected toolchain.
+
+Confirm Metal was picked up in the configure output:
+```
+-- GPU backend: Metal
+-- Including METAL backend
+```
+
+**4. Run**
+```bash
+make run       # or ./build/bin/SubtitleGeneratorAI
+```
+
+> `make clean` deletes `build/`, including any models downloaded into
+> `build/bin/models/`.
 
 ---
 

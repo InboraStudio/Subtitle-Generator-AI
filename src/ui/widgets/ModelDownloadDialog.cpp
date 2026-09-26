@@ -14,6 +14,8 @@
 #include <windows.h>
 #elif defined(Q_OS_LINUX)
 #include <sys/sysinfo.h>
+#elif defined(Q_OS_MACOS)
+#include <sys/sysctl.h>
 #endif
 
 static const QString HF_BASE =
@@ -453,6 +455,11 @@ int ModelDownloadDialog::detectSystemRamMB() const {
   if (sysinfo(&si) == 0)
     return static_cast<int>((quint64(si.totalram) * si.mem_unit) /
                             (1024 * 1024));
+#elif defined(Q_OS_MACOS)
+  quint64 memsize = 0;
+  size_t len = sizeof(memsize);
+  if (sysctlbyname("hw.memsize", &memsize, &len, nullptr, 0) == 0)
+    return static_cast<int>(memsize / (1024 * 1024));
 #endif
   return 4096;
 }
