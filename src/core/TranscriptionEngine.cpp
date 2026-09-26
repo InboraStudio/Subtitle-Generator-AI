@@ -1,7 +1,10 @@
 #include "TranscriptionEngine.h"
+#include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
+#include <QSet>
+#include <QStandardPaths>
 #include <QThread>
 
 #ifdef WHISPER_AVAILABLE
@@ -151,6 +154,33 @@ QStringList TranscriptionEngine::discoverModels(const QString &modelsDir) {
   QDirIterator it(modelsDir, {"*.bin", "*.gguf"}, QDir::Files);
   while (it.hasNext())
     models.append(it.next());
+  return models;
+}
+
+QString TranscriptionEngine::userModelsDir() {
+  // e.g. ~/Library/Application Support/SubtitleGeneratorAI/models,
+  // ~/.local/share/SubtitleGeneratorAI/models, %LOCALAPPDATA%/SubtitleGeneratorAI/models
+  return QStandardPaths::writableLocation(
+             QStandardPaths::GenericDataLocation) +
+         "/" + QCoreApplication::applicationName() + "/models";
+}
+
+QString TranscriptionEngine::bundledModelsDir() {
+  return QCoreApplication::applicationDirPath() + "/models";
+}
+
+QStringList TranscriptionEngine::discoverModels() {
+  QStringList models;
+  QSet<QString> seen;
+  for (const QString &dir : {userModelsDir(), bundledModelsDir()}) {
+    for (const QString &m : discoverModels(dir)) {
+      const QString name = QFileInfo(m).fileName();
+      if (!seen.contains(name)) {
+        seen.insert(name);
+        models.append(m);
+      }
+    }
+  }
   return models;
 }
 

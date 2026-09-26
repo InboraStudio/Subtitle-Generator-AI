@@ -21,7 +21,14 @@ public:
                   const QString &language = "auto", bool fastMode = false);
   void cancel();
 
+  // Per-user, writable model folder outside the build/install tree, so
+  // rebuilding or `make clean` never deletes downloaded models.
+  static QString userModelsDir();
+  // Read-only models bundled next to the executable (see CMake install()).
+  static QString bundledModelsDir();
   static QStringList discoverModels(const QString &modelsDir);
+  // Models from userModelsDir() then bundledModelsDir(); first name wins.
+  static QStringList discoverModels();
   static QString modelTier(const QString &modelPath);
   bool isModelLoaded() const;
   void unloadModel();

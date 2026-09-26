@@ -186,8 +186,11 @@ Confirm Metal was picked up in the configure output:
 make run       # or ./build/bin/SubtitleGeneratorAI
 ```
 
-> `make clean` deletes `build/`, including any models downloaded into
-> `build/bin/models/`.
+> Models downloaded from the Model Manager are stored outside the build tree,
+> in `~/Library/Application Support/SubtitleGeneratorAI/models/`
+> (Linux: `~/.local/share/SubtitleGeneratorAI/models/`, Windows:
+> `%LOCALAPPDATA%\SubtitleGeneratorAI\models\`), so `make clean` keeps them.
+> Models placed in a `models/` folder next to the executable are also listed.
 
 ---
 
