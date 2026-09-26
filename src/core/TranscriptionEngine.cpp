@@ -98,9 +98,11 @@ bool TranscriptionEngine::transcribe(const QString &wavPath,
   wparams.print_realtime = false;
   wparams.print_special = false;
   wparams.translate = false;
+  // Must outlive whisper_full(), which reads wparams.language
+  const QByteArray languageBytes = language.toLocal8Bit();
   wparams.language = (language == "auto" || language.isEmpty())
                          ? nullptr
-                         : language.toLocal8Bit().constData();
+                         : languageBytes.constData();
   wparams.n_threads = qMax(1, QThread::idealThreadCount() - 1);
   wparams.beam_search.beam_size = fastMode ? 1 : 5;
 
