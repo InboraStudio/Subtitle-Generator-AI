@@ -2,6 +2,7 @@
 #include "../widgets/CircularProgressWidget.h"
 #include "../widgets/JobListWidget.h"
 #include <QElapsedTimer>
+#include <QHash>
 #include <QLabel>
 #include <QProgressBar>
 #include <QWidget>
@@ -37,4 +38,6 @@ private:
   int m_completedJobs = 0;
   int m_failedJobs = 0;
   QElapsedTimer m_jobTimer;
+  // Latest percent of each job still running, for overall progress and ETA
+  QHash<int, int> m_activePercent;
 };

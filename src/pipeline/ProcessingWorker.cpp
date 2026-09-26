@@ -39,7 +39,7 @@ void ProcessingWorker::run() {
     return;
   }
 
-  emit progress(m_job.id, 5, "Extracting audio");
+  emit progress(m_job.id, 1, "Extracting audio");
   if (!extractAudio(tempWav))
     return;
   if (m_cancelled) {
@@ -47,7 +47,7 @@ void ProcessingWorker::run() {
     return;
   }
 
-  emit progress(m_job.id, 20, "Transcribing");
+  emit progress(m_job.id, 5, "Transcribing");
   QStringList srtLines;
   QList<TranscriptSegment> segments;
   {
@@ -55,7 +55,7 @@ void ProcessingWorker::run() {
     connect(&engine, &TranscriptionEngine::logMessage,
             [](const QString &msg) { LOG_INFO(msg); });
     connect(&engine, &TranscriptionEngine::progress, [this](int p) {
-      emit progress(m_job.id, 20 + p * 55 / 100, "Transcribing");
+      emit progress(m_job.id, 5 + p * 80 / 100, "Transcribing");
     });
     if (!engine.loadModel(m_job.modelPath)) {
       emit failed(m_job.id, "Could not load transcription model");
@@ -76,7 +76,7 @@ void ProcessingWorker::run() {
   }
 
   if (m_job.enableTranslation && !m_job.targetLanguage.isEmpty()) {
-    emit progress(m_job.id, 76, "Translating");
+    emit progress(m_job.id, 86, "Translating");
     TranslationEngine translator;
     connect(&translator, &TranslationEngine::logMessage,
             [](const QString &msg) { LOG_INFO(msg); });
@@ -126,8 +126,9 @@ bool ProcessingWorker::extractAudio(const QString &tempWav) {
   connect(&extractor, &AudioExtractor::logMessage,
           [](const QString &msg) { LOG_INFO(msg); });
   connect(&extractor, &AudioExtractor::progress, [this](int p) {
-    // Extraction occupies the 5-20% slice of the overall job progress.
-    emit progress(m_job.id, 5 + p * 15 / 100, "Extracting audio");
+    // Extraction is fast (hundreds of times realtime), so it only gets the
+    // 1-5% slice; transcription dominates wall time and gets 5-85%.
+    emit progress(m_job.id, 1 + p * 4 / 100, "Extracting audio");
   });
 
   // Capture the detailed reason so the user sees *why* it failed instead of a

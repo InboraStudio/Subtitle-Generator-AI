@@ -108,6 +108,13 @@ bool TranscriptionEngine::transcribe(const QString &wavPath,
                          : languageBytes.constData();
   wparams.n_threads = qMax(1, QThread::idealThreadCount() - 1);
   wparams.beam_search.beam_size = fastMode ? 1 : 5;
+  // Report progress while whisper_full() runs; it invokes the callback on
+  // this thread, so emitting directly is safe.
+  wparams.progress_callback = [](whisper_context *, whisper_state *,
+                                 int percent, void *userData) {
+    emit static_cast<TranscriptionEngine *>(userData)->progress(percent);
+  };
+  wparams.progress_callback_user_data = this;
 
   whisper_context *ctx = static_cast<whisper_context *>(m_ctx);
   if (whisper_full(ctx, wparams, pcmf32.data(), pcmf32.size()) != 0) {
@@ -127,7 +134,6 @@ bool TranscriptionEngine::transcribe(const QString &wavPath,
         QString::fromUtf8(whisper_full_get_segment_text(ctx, i)).trimmed();
     outSegments.append(seg);
     emit segmentReady(seg);
-    emit progress(static_cast<int>(100.0 * i / nSeg));
   }
 
   emit progress(100);

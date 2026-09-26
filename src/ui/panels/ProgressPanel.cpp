@@ -80,6 +80,7 @@ void ProgressPanel::reset() {
   m_totalJobs = 0;
   m_completedJobs = 0;
   m_failedJobs = 0;
+  m_activePercent.clear();
   m_overallCircle->setValue(0);
   m_overallBar->setValue(0);
   m_overallLabel->setText("No jobs queued");
@@ -96,6 +97,7 @@ void ProgressPanel::setTotalJobs(int count) {
   m_totalJobs = count;
   m_completedJobs = 0;
   m_failedJobs = 0;
+  m_activePercent.clear();
   m_jobTimer.restart();
   m_overallLabel->setText(
       QString("Processing %1 file%2...").arg(count).arg(count == 1 ? "" : "s"));
@@ -118,16 +120,20 @@ void ProgressPanel::onJobStarted(int jobId, const QString &filePath) {
 void ProgressPanel::onJobProgress(int jobId, int percent,
                                   const QString &stage) {
   m_jobList->updateJobProgress(jobId, percent, stage);
+  m_activePercent[jobId] = percent;
+  updateOverallProgress();
 }
 
 void ProgressPanel::onJobFinished(int jobId, const QString &) {
   m_completedJobs++;
+  m_activePercent.remove(jobId);
   m_jobList->updateJobStatus(jobId, JobStatus::Completed);
   updateOverallProgress();
 }
 
 void ProgressPanel::onJobFailed(int jobId, const QString &error) {
   m_failedJobs++;
+  m_activePercent.remove(jobId);
   m_jobList->updateJobStatus(jobId, JobStatus::Failed);
   if (!error.isEmpty())
     m_jobList->setJobError(jobId, error);
@@ -160,22 +166,35 @@ void ProgressPanel::updateOverallProgress() {
   m_completedLabel->setText(QString::number(m_completedJobs));
   m_failedLabel->setText(QString::number(m_failedJobs));
 
-  if (m_totalJobs > 0) {
-    int pct = done * 100 / m_totalJobs;
-    m_overallCircle->setValue(pct);
-    m_overallBar->setValue(pct);
+  if (m_totalJobs <= 0)
+    return;
 
-    if (done > 0 && m_totalJobs > done) {
-      qint64 elapsed = m_jobTimer.elapsed();
-      double msPerJob = static_cast<double>(elapsed) / done;
-      int remaining = m_totalJobs - done;
-      double eta = msPerJob * remaining / 1000.0;
-      if (eta < 60)
-        m_etaLabel->setText(QString("%1s").arg(static_cast<int>(eta)));
-      else
-        m_etaLabel->setText(QString("%1m %2s")
-                                .arg(static_cast<int>(eta / 60))
-                                .arg(static_cast<int>(eta) % 60));
-    }
+  // Finished jobs count as 100%, running jobs contribute their own percent.
+  double work = done * 100.0;
+  for (int pct : std::as_const(m_activePercent))
+    work += pct;
+  const double overall = qBound(0.0, work / m_totalJobs, 100.0);
+  m_overallCircle->setValue(static_cast<int>(overall));
+  m_overallBar->setValue(static_cast<int>(overall));
+
+  if (done >= m_totalJobs)
+    return;
+
+  // Extrapolate from the fraction of total work done so far. Wait until one
+  // job's worth of audio extraction (the 0-5% slice) is behind us and a few
+  // seconds have passed, otherwise the estimate is wildly optimistic.
+  const qint64 elapsed = m_jobTimer.elapsed();
+  if (overall <= 5.0 / m_totalJobs || elapsed < 3000) {
+    m_etaLabel->setText("Calculating...");
+    return;
   }
+  const int eta =
+      static_cast<int>(elapsed / 1000.0 * (100.0 - overall) / overall);
+  if (eta < 60)
+    m_etaLabel->setText(QString("%1s").arg(eta));
+  else if (eta < 3600)
+    m_etaLabel->setText(QString("%1m %2s").arg(eta / 60).arg(eta % 60));
+  else
+    m_etaLabel->setText(
+        QString("%1h %2m").arg(eta / 3600).arg((eta % 3600) / 60));
 }
