@@ -11,3 +11,5 @@
 *.exe
 *.dll
 *.log
+/build-release/
+/dist/

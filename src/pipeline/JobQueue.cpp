@@ -13,10 +13,9 @@ void JobQueue::enqueue(const Job &job) {
 
 bool JobQueue::dequeue(Job &job) {
   QMutexLocker lock(&m_mutex);
-  while (m_paused && !m_cancelled)
-    m_notPaused.wait(&m_mutex);
-
-  if (m_cancelled || m_queue.empty())
+  // Dispatch runs on the GUI thread, so never block here: a paused queue just
+  // hands out nothing until resume() triggers another dispatch.
+  if (m_paused || m_cancelled || m_queue.empty())
     return false;
 
   job = m_queue.front();
@@ -34,6 +33,15 @@ void JobQueue::resume() {
   QMutexLocker lock(&m_mutex);
   m_paused = false;
   m_notPaused.wakeAll();
+}
+
+void JobQueue::reset() {
+  QMutexLocker lock(&m_mutex);
+  m_cancelled = false;
+  m_paused = false;
+  m_queue.clear();
+  m_allJobs.clear();
+  emit sizeChanged(0);
 }
 
 void JobQueue::cancelAll() {

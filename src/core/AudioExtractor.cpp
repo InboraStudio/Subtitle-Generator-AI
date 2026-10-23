@@ -105,9 +105,16 @@ bool AudioExtractor::extract(const QString &videoPath,
                    .right(4000);
 
   if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
-    const QString reason = stderrTail.trimmed().isEmpty()
+    // Keep whole lines: the last few lines of FFmpeg's stderr carry the
+    // actual reason, and cutting by characters starts mid-word.
+    QStringList lines = stderrTail.trimmed().split('\n', Qt::SkipEmptyParts);
+    while (lines.size() > 3)
+      lines.removeFirst();
+    for (QString &l : lines)
+      l = l.trimmed();
+    const QString reason = lines.isEmpty()
                                ? proc.errorString()
-                               : stderrTail.trimmed().right(300);
+                               : lines.join('\n').trimmed().right(400);
     emit failed(QString("FFmpeg error (code %1): %2")
                     .arg(proc.exitCode())
                     .arg(reason));

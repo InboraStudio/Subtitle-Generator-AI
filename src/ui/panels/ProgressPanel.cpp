@@ -1,79 +1,184 @@
 #include "ProgressPanel.h"
-#include <QElapsedTimer>
+#include "../Theme.h"
+#include <QDesktopServices>
+#include <QDir>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QUrl>
 #include <QVBoxLayout>
 
 ProgressPanel::ProgressPanel(QWidget *parent) : QWidget(parent) {
   auto *vl = new QVBoxLayout(this);
-  vl->setContentsMargins(16, 16, 16, 16);
+  vl->setContentsMargins(20, 18, 20, 18);
   vl->setSpacing(14);
 
-  auto *title = new QLabel("Processing", this);
-  title->setStyleSheet("color:#E0E0E0; font-size:10pt; font-weight:600;");
-  vl->addWidget(title);
+  {
+    auto *hdr = Theme::pageHeader(this, "Processing");
 
-  auto *topCard = new QFrame(this);
-  topCard->setObjectName("topCard");
-  topCard->setStyleSheet("QFrame#topCard{background:#1C1C1C;border:1px solid "
-                         "#262626;border-radius:8px;}");
-  auto *tc = new QHBoxLayout(topCard);
-  tc->setContentsMargins(16, 14, 16, 14);
-  tc->setSpacing(20);
+    m_openBtn = new QPushButton("Open Output", this);
+    m_openBtn->setObjectName("secondaryBtn");
+    m_openBtn->setIcon(Theme::icon("folder", Theme::Color::Text));
+    m_openBtn->setToolTip("Open the folder where subtitles are written");
+    connect(m_openBtn, &QPushButton::clicked, this, [this] {
+      if (m_outputDir.isEmpty())
+        return;
+      QDir().mkpath(m_outputDir);
+      QDesktopServices::openUrl(QUrl::fromLocalFile(m_outputDir));
+    });
+    hdr->addWidget(m_openBtn);
 
-  m_overallCircle = new CircularProgressWidget(topCard);
-  m_overallCircle->setThickness(10);
-  m_overallCircle->setFixedSize(90, 90);
-  tc->addWidget(m_overallCircle);
+    m_pauseBtn = new QPushButton("Pause", this);
+    m_pauseBtn->setObjectName("secondaryBtn");
+    m_pauseBtn->setIcon(Theme::icon("pause", Theme::Color::Text));
+    m_pauseBtn->setToolTip("Hold the queue after the files already running");
+    connect(m_pauseBtn, &QPushButton::clicked, this, [this] {
+      m_paused = !m_paused;
+      m_pauseBtn->setText(m_paused ? "Resume" : "Pause");
+      m_pauseBtn->setIcon(
+          Theme::icon(m_paused ? "play" : "pause", Theme::Color::Text));
+      if (m_paused)
+        setHeadline("Paused - running files will finish, then the queue waits",
+                    "warning");
+      else
+        setHeadline("Processing...", "accent");
+      emit pauseRequested(m_paused);
+    });
+    hdr->addWidget(m_pauseBtn);
 
-  auto *statsGrid = new QWidget(topCard);
-  statsGrid->setObjectName("statsGrid");
-  statsGrid->setStyleSheet("QWidget#statsGrid { background-color: transparent; }");
-  auto *gl = new QVBoxLayout(statsGrid);
-  gl->setContentsMargins(0, 0, 0, 0);
-  gl->setSpacing(10);
+    m_cancelBtn = new QPushButton("Cancel", this);
+    m_cancelBtn->setObjectName("dangerBtn");
+    m_cancelBtn->setIcon(Theme::icon("stop", Theme::Color::Error));
+    m_cancelBtn->setToolTip("Skip every file that has not started yet");
+    connect(m_cancelBtn, &QPushButton::clicked, this,
+            &ProgressPanel::cancelRequested);
+    hdr->addWidget(m_cancelBtn);
+    vl->addLayout(hdr);
+  }
 
-  auto makeStat = [&](const QString &label, QLabel *&valLabel) {
+  // ---- Overview card -------------------------------------------------------
+  {
+    QVBoxLayout *cl = nullptr;
+    auto *card = Theme::card(this, "OVERVIEW", &cl);
+    cl->setContentsMargins(18, 16, 18, 16);
+
     auto *row = new QHBoxLayout();
-    auto *lbl = new QLabel(label, statsGrid);
-    lbl->setStyleSheet("color:#707070; font-size:7.5pt; letter-spacing:0.8px; "
-                       "font-weight:600;");
-    lbl->setFixedWidth(90);
-    row->addWidget(lbl);
-    valLabel = new QLabel("-", statsGrid);
-    valLabel->setStyleSheet("color:#E0E0E0; font-size:9pt; font-weight:600;");
-    row->addWidget(valLabel);
-    row->addStretch();
-    gl->addLayout(row);
-  };
+    row->setSpacing(24);
 
-  makeStat("COMPLETED", m_completedLabel);
-  makeStat("FAILED", m_failedLabel);
-  makeStat("ACTIVE", m_activeLabel);
-  makeStat("ETA", m_etaLabel);
-  tc->addWidget(statsGrid, 1);
+    m_overallCircle = new CircularProgressWidget(card);
+    m_overallCircle->setThickness(8);
+    m_overallCircle->setFixedSize(96, 96);
+    row->addWidget(m_overallCircle);
 
-  vl->addWidget(topCard);
+    auto *grid = new QGridLayout();
+    grid->setHorizontalSpacing(28);
+    grid->setVerticalSpacing(4);
+    auto makeStat = [&](int col, const QString &label, QLabel *&value) {
+      auto *l = new QLabel(label, card);
+      Theme::setRole(l, "statLabel");
+      grid->addWidget(l, 0, col);
+      value = new QLabel("-", card);
+      Theme::setRole(value, "statValue");
+      grid->addWidget(value, 1, col);
+    };
+    makeStat(0, "COMPLETED", m_completedLabel);
+    makeStat(1, "FAILED", m_failedLabel);
+    makeStat(2, "ACTIVE", m_activeLabel);
+    makeStat(3, "ELAPSED", m_elapsedLabel);
+    makeStat(4, "REMAINING", m_etaLabel);
+    for (int c = 0; c < 5; ++c)
+      grid->setColumnStretch(c, 1);
 
-  m_overallLabel = new QLabel("No jobs queued", this);
-  m_overallLabel->setStyleSheet("color:#505050; font-size:8pt;");
-  vl->addWidget(m_overallLabel);
+    auto *right = new QVBoxLayout();
+    right->setSpacing(12);
+    right->addLayout(grid);
 
-  m_overallBar = new QProgressBar(this);
-  m_overallBar->setRange(0, 100);
-  m_overallBar->setValue(0);
-  m_overallBar->setFixedHeight(6);
-  m_overallBar->setTextVisible(false);
-  vl->addWidget(m_overallBar);
+    m_headline = new QLabel(card);
+    m_headline->setWordWrap(true);
+    right->addWidget(m_headline);
 
-  auto *queueTitle = new QLabel("Job Queue", this);
-  queueTitle->setStyleSheet(
-      "color:#808080; font-size:7.5pt; letter-spacing:0.5px; font-weight:600;");
-  vl->addWidget(queueTitle);
+    m_overallBar = new QProgressBar(card);
+    m_overallBar->setRange(0, 100);
+    m_overallBar->setTextVisible(false);
+    m_overallBar->setProperty("thin", true);
+    right->addWidget(m_overallBar);
 
-  m_jobList = new JobListWidget(this);
-  vl->addWidget(m_jobList, 1);
+    row->addLayout(right, 1);
+    cl->addLayout(row);
+    vl->addWidget(card);
+  }
+
+  // ---- Job list card -------------------------------------------------------
+  {
+    QVBoxLayout *cl = nullptr;
+    auto *card = Theme::card(this, "JOB QUEUE", &cl);
+    cl->setContentsMargins(0, 0, 0, 0);
+    cl->setSpacing(0);
+
+    m_stack = new QStackedWidget(card);
+
+    auto *empty = new QWidget(m_stack);
+    auto *el = new QVBoxLayout(empty);
+    el->setAlignment(Qt::AlignCenter);
+    el->setSpacing(8);
+    auto *ic = new QLabel(empty);
+    ic->setPixmap(Theme::icon("progress", Theme::Color::TextFaint).pixmap(36, 36));
+    ic->setAlignment(Qt::AlignCenter);
+    el->addWidget(ic);
+    auto *et = new QLabel("No batch running", empty);
+    et->setObjectName("dropTitle");
+    et->setAlignment(Qt::AlignCenter);
+    el->addWidget(et);
+    auto *eh = new QLabel("Add videos on the Input page and press Start "
+                          "Processing.",
+                          empty);
+    eh->setObjectName("dropHint");
+    eh->setAlignment(Qt::AlignCenter);
+    el->addWidget(eh);
+    el->addSpacing(6);
+    auto *eb = new QPushButton("Go to Input", empty);
+    eb->setObjectName("secondaryBtn");
+    connect(eb, &QPushButton::clicked, this, &ProgressPanel::addFilesRequested);
+    el->addWidget(eb, 0, Qt::AlignCenter);
+    m_stack->addWidget(empty);
+
+    m_jobList = new JobListWidget(m_stack);
+    m_stack->addWidget(m_jobList);
+
+    cl->addWidget(m_stack, 1);
+    vl->addWidget(card, 1);
+  }
+
+  m_clock.setInterval(1000);
+  connect(&m_clock, &QTimer::timeout, this, &ProgressPanel::updateElapsed);
+
+  reset();
+}
+
+void ProgressPanel::setHeadline(const QString &text, const QString &role) {
+  m_headline->setText(text);
+  Theme::setRole(m_headline, role);
+}
+
+void ProgressPanel::setRunning(bool running) {
+  m_running = running;
+  m_pauseBtn->setEnabled(running);
+  m_cancelBtn->setEnabled(running);
+  if (running)
+    m_clock.start();
+  else
+    m_clock.stop();
+  if (!running) {
+    m_paused = false;
+    m_pauseBtn->setText("Pause");
+    m_pauseBtn->setIcon(Theme::icon("pause", Theme::Color::Text));
+  }
+}
+
+void ProgressPanel::setOutputDirectory(const QString &dir) {
+  m_outputDir = dir;
+  m_openBtn->setEnabled(!dir.isEmpty());
 }
 
 void ProgressPanel::reset() {
@@ -82,15 +187,20 @@ void ProgressPanel::reset() {
   m_failedJobs = 0;
   m_activePercent.clear();
   m_overallCircle->setValue(0);
+  m_overallCircle->setAccentColor(Theme::Color::Accent);
   m_overallBar->setValue(0);
-  m_overallLabel->setText("No jobs queued");
-  m_overallLabel->setStyleSheet("color:#505050; font-size:8pt;");
-  m_overallLabel->setToolTip(QString());
+  m_overallBar->setProperty("state", "");
+  Theme::repolish(m_overallBar);
+  setHeadline("Idle - nothing is being processed.", "faint");
+  m_headline->setToolTip(QString());
   m_completedLabel->setText("-");
   m_failedLabel->setText("-");
   m_activeLabel->setText("-");
+  m_elapsedLabel->setText("-");
   m_etaLabel->setText("-");
   m_jobList->clearAll();
+  m_stack->setCurrentIndex(0);
+  setRunning(false);
 }
 
 void ProgressPanel::setTotalJobs(int count) {
@@ -99,22 +209,34 @@ void ProgressPanel::setTotalJobs(int count) {
   m_failedJobs = 0;
   m_activePercent.clear();
   m_jobTimer.restart();
-  m_overallLabel->setText(
-      QString("Processing %1 file%2...").arg(count).arg(count == 1 ? "" : "s"));
+  setHeadline(
+      QString("Processing %1 file%2...").arg(count).arg(count == 1 ? "" : "s"),
+      "accent");
   m_completedLabel->setText("0");
   m_failedLabel->setText("0");
   m_activeLabel->setText("0");
-  m_etaLabel->setText("Calculating...");
+  m_elapsedLabel->setText("0s");
+  m_etaLabel->setText("...");
+  m_stack->setCurrentIndex(1);
+  setRunning(true);
+}
+
+void ProgressPanel::setJobs(const QList<Job> &jobs) {
+  for (const Job &j : jobs)
+    m_jobList->addJob(j);
+  m_stack->setCurrentIndex(jobs.isEmpty() ? 0 : 1);
 }
 
 void ProgressPanel::onJobStarted(int jobId, const QString &filePath) {
-  Job j;
-  j.id = jobId;
-  j.inputPath = filePath;
-  m_jobList->addJob(j);
+  if (!m_jobList->hasJob(jobId)) {
+    Job j;
+    j.id = jobId;
+    j.inputPath = filePath;
+    m_jobList->addJob(j);
+  }
   m_jobList->updateJobStatus(jobId, JobStatus::Extracting);
-  m_activeLabel->setText(
-      QString::number(m_jobList->jobCount() - m_completedJobs - m_failedJobs));
+  m_activePercent.insert(jobId, 0);
+  m_activeLabel->setText(QString::number(m_activePercent.size()));
 }
 
 void ProgressPanel::onJobProgress(int jobId, int percent,
@@ -124,10 +246,11 @@ void ProgressPanel::onJobProgress(int jobId, int percent,
   updateOverallProgress();
 }
 
-void ProgressPanel::onJobFinished(int jobId, const QString &) {
+void ProgressPanel::onJobFinished(int jobId, const QString &output) {
   m_completedJobs++;
   m_activePercent.remove(jobId);
   m_jobList->updateJobStatus(jobId, JobStatus::Completed);
+  m_jobList->setJobOutput(jobId, output);
   updateOverallProgress();
 }
 
@@ -137,34 +260,71 @@ void ProgressPanel::onJobFailed(int jobId, const QString &error) {
   m_jobList->updateJobStatus(jobId, JobStatus::Failed);
   if (!error.isEmpty())
     m_jobList->setJobError(jobId, error);
-  // Surface the most recent failure reason above the queue so the user does not
-  // have to open the console to understand what went wrong.
+  // Surface the most recent failure reason so the user does not have to open
+  // the console to understand what went wrong.
   QString firstLine = error.section('\n', 0, 0).trimmed();
   if (!firstLine.isEmpty()) {
-    m_overallLabel->setText("Failed: " + firstLine);
-    m_overallLabel->setStyleSheet("color:#E05050; font-size:8pt;");
-    m_overallLabel->setToolTip(error);
+    setHeadline("Last failure: " + firstLine, "error");
+    m_headline->setToolTip(error);
   }
   updateOverallProgress();
 }
 
 void ProgressPanel::onAllComplete() {
-  m_overallLabel->setText(QString("All done - %1 completed, %2 failed")
-                              .arg(m_completedJobs)
-                              .arg(m_failedJobs));
-  m_overallLabel->setStyleSheet(
-      m_failedJobs > 0 ? "color:#E0A030; font-size:8pt;"
-                       : "color:#4CAF50; font-size:8pt;");
+  setRunning(false);
+  updateElapsed();
+  if (m_failedJobs == 0)
+    setHeadline(QString("All done - %1 file%2 subtitled.")
+                    .arg(m_completedJobs)
+                    .arg(m_completedJobs == 1 ? "" : "s"),
+                "success");
+  else
+    setHeadline(QString("Finished - %1 completed, %2 failed. Hover a failed "
+                        "row for details.")
+                    .arg(m_completedJobs)
+                    .arg(m_failedJobs),
+                m_completedJobs == 0 ? "error" : "warning");
   m_activeLabel->setText("0");
   m_etaLabel->setText("-");
   m_overallCircle->setValue(100);
+  m_overallCircle->setAccentColor(m_completedJobs == 0 && m_failedJobs > 0
+                                      ? Theme::Color::Error
+                                  : m_failedJobs > 0 ? Theme::Color::Warning
+                                                     : Theme::Color::Success);
   m_overallBar->setValue(100);
+  m_overallBar->setProperty("state", m_completedJobs == 0 && m_failedJobs > 0
+                                         ? "error"
+                                     : m_failedJobs > 0 ? "warn"
+                                                        : "ok");
+  Theme::repolish(m_overallBar);
+}
+
+void ProgressPanel::onCancelled() {
+  m_jobList->cancelPending();
+  m_pauseBtn->setEnabled(false);
+  m_cancelBtn->setEnabled(false);
+  m_etaLabel->setText("-");
+  if (m_activePercent.isEmpty()) {
+    setRunning(false);
+    setHeadline("Cancelled.", "warning");
+  } else {
+    setHeadline("Cancelling - waiting for the running file to finish...",
+                "warning");
+  }
+}
+
+void ProgressPanel::updateElapsed() {
+  if (!m_jobTimer.isValid())
+    return;
+  m_elapsedLabel->setText(
+      Theme::formatDuration(static_cast<int>(m_jobTimer.elapsed() / 1000)));
 }
 
 void ProgressPanel::updateOverallProgress() {
   int done = m_completedJobs + m_failedJobs;
   m_completedLabel->setText(QString::number(m_completedJobs));
   m_failedLabel->setText(QString::number(m_failedJobs));
+  m_activeLabel->setText(QString::number(m_activePercent.size()));
 
   if (m_totalJobs <= 0)
     return;
@@ -185,16 +345,10 @@ void ProgressPanel::updateOverallProgress() {
   // seconds have passed, otherwise the estimate is wildly optimistic.
   const qint64 elapsed = m_jobTimer.elapsed();
   if (overall <= 5.0 / m_totalJobs || elapsed < 3000) {
-    m_etaLabel->setText("Calculating...");
+    m_etaLabel->setText("...");
     return;
   }
   const int eta =
       static_cast<int>(elapsed / 1000.0 * (100.0 - overall) / overall);
-  if (eta < 60)
-    m_etaLabel->setText(QString("%1s").arg(eta));
-  else if (eta < 3600)
-    m_etaLabel->setText(QString("%1m %2s").arg(eta / 60).arg(eta % 60));
-  else
-    m_etaLabel->setText(
-        QString("%1h %2m").arg(eta / 3600).arg((eta % 3600) / 60));
+  m_etaLabel->setText(Theme::formatDuration(eta));
 }

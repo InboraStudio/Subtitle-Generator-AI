@@ -58,6 +58,9 @@ else()
     message(STATUS "GPU backend: ${_gpu_backend}")
 endif()
 
+# Shown in the app and stamped into the installer; CI overrides it from the tag.
+set(APP_VERSION "${PROJECT_VERSION}" CACHE STRING "Version shown to users")
+
 find_package(Qt6 REQUIRED COMPONENTS Widgets Core Concurrent Network)
 
 set(SOURCES
@@ -78,6 +81,8 @@ set(SOURCES
     src/logging/LogModel.cpp
     src/ui/MainWindow.cpp
     src/ui/SidebarWidget.cpp
+    src/ui/Theme.cpp
+    src/ui/panels/AboutPanel.cpp
     src/ui/panels/InputPanel.cpp
     src/ui/panels/SettingsPanel.cpp
     src/ui/panels/ProgressPanel.cpp
@@ -87,6 +92,7 @@ set(SOURCES
     src/ui/widgets/JobListWidget.cpp
     src/ui/widgets/ToggleSwitch.cpp
     src/ui/widgets/ModelDownloadDialog.cpp
+    src/ui/widgets/SubtitlePreview.cpp
 )
 
 set(HEADERS
@@ -107,6 +113,8 @@ set(HEADERS
     src/logging/LogModel.h
     src/ui/MainWindow.h
     src/ui/SidebarWidget.h
+    src/ui/Theme.h
+    src/ui/panels/AboutPanel.h
     src/ui/panels/InputPanel.h
     src/ui/panels/SettingsPanel.h
     src/ui/panels/ProgressPanel.h
@@ -116,6 +124,7 @@ set(HEADERS
     src/ui/widgets/JobListWidget.h
     src/ui/widgets/ToggleSwitch.h
     src/ui/widgets/ModelDownloadDialog.h
+    src/ui/widgets/SubtitlePreview.h
 )
 
 if(USE_BUNDLED_WHISPER)
@@ -156,6 +165,9 @@ target_link_libraries(SubtitleGeneratorAI PRIVATE
     Qt6::Concurrent
     Qt6::Network
 )
+
+target_compile_definitions(SubtitleGeneratorAI PRIVATE
+    APP_VERSION="${APP_VERSION}")
 
 if(WHISPER_AVAILABLE)
     if(USE_BUNDLED_WHISPER)

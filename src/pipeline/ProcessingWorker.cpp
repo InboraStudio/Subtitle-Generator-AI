@@ -78,6 +78,8 @@ void ProcessingWorker::run() {
   if (m_job.enableTranslation && !m_job.targetLanguage.isEmpty()) {
     emit progress(m_job.id, 86, "Translating");
     TranslationEngine translator;
+    if (!m_job.translationEndpoint.isEmpty())
+      translator.setEndpoint(m_job.translationEndpoint);
     connect(&translator, &TranslationEngine::logMessage,
             [](const QString &msg) { LOG_INFO(msg); });
     translator.translate(segments, m_job.sourceLanguage, m_job.targetLanguage);

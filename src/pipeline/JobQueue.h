@@ -17,6 +17,8 @@ public:
   void pause();
   void resume();
   void cancelAll();
+  // Clears the cancelled/paused state and all jobs before a new batch.
+  void reset();
 
   int size() const;
   bool isEmpty() const;

@@ -1,4 +1,5 @@
 #include "CircularProgressWidget.h"
+#include "../Theme.h"
 #include <QPainter>
 #include <QPainterPath>
 #include <cmath>
@@ -39,7 +40,7 @@ void CircularProgressWidget::paintEvent(QPaintEvent *) {
   int margin = m_thickness / 2 + 2;
   QRectF rect(margin, margin, width() - margin * 2, height() - margin * 2);
 
-  QPen trackPen(QColor("#252525"), m_thickness, Qt::SolidLine, Qt::RoundCap);
+  QPen trackPen(Theme::Color::Track, m_thickness, Qt::SolidLine, Qt::RoundCap);
   p.setPen(trackPen);
   p.drawArc(rect, 0, 360 * 16);
 
@@ -50,9 +51,9 @@ void CircularProgressWidget::paintEvent(QPaintEvent *) {
     p.drawArc(rect, 90 * 16, spanAngle);
   }
 
-  p.setPen(QColor("#E0E0E0"));
+  p.setPen(Theme::Color::TextStrong);
   QFont font = p.font();
-  font.setPointSize(11);
+  font.setPixelSize(qMax(10, int(rect.height() * 0.2)));
   font.setBold(true);
   p.setFont(font);
   p.drawText(rect, Qt::AlignCenter, QString::number(m_value) + "%");
@@ -62,7 +63,7 @@ void CircularProgressWidget::paintEvent(QPaintEvent *) {
     lf.setPointSize(7);
     lf.setBold(false);
     p.setFont(lf);
-    p.setPen(QColor("#505050"));
+    p.setPen(Theme::Color::TextFaint);
     QRectF labelRect(0, height() - 14, width(), 14);
     p.drawText(labelRect, Qt::AlignCenter, m_label);
   }

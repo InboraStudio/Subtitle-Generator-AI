@@ -1,23 +1,26 @@
 #pragma once
 #include "../../monitor/SystemMonitor.h"
-#include "CircularProgressWidget.h"
+#include <QFrame>
 #include <QLabel>
+#include <QProgressBar>
 #include <QWidget>
 
-
-class StatGauge : public QWidget {
+// One "CPU [=====    ] 42%" meter in the stats strip.
+class StatMeter : public QWidget {
   Q_OBJECT
 public:
-  explicit StatGauge(const QString &label, QWidget *parent = nullptr);
-  void setValue(int percent, const QString &detail = QString());
+  explicit StatMeter(const QString &label, QWidget *parent = nullptr);
+  void setValue(int percent, const QString &value, const QString &detail = {});
+  void setUnavailable(const QString &reason);
 
 private:
-  CircularProgressWidget *m_circle;
-  QLabel *m_label;
+  QLabel *m_value;
   QLabel *m_detail;
+  QProgressBar *m_bar;
 };
 
-class SystemStatsWidget : public QWidget {
+// Compact live resource strip shown under every page.
+class SystemStatsWidget : public QFrame {
   Q_OBJECT
 public:
   explicit SystemStatsWidget(QWidget *parent = nullptr);
@@ -26,7 +29,7 @@ public slots:
   void updateStats(const SystemStats &stats);
 
 private:
-  StatGauge *m_cpu;
-  StatGauge *m_ram;
-  StatGauge *m_gpu;
+  StatMeter *m_cpu;
+  StatMeter *m_ram;
+  StatMeter *m_gpu;
 };

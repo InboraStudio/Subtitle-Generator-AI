@@ -1,4 +1,5 @@
 #include "ModelDownloadDialog.h"
+#include "../Theme.h"
 #include <QCloseEvent>
 #include <QDir>
 #include <QElapsedTimer>
@@ -29,24 +30,6 @@ ModelDownloadDialog::ModelDownloadDialog(const QString &modelsDir,
   setMinimumSize(820, 580);
   setWindowFlags(Qt::Dialog | Qt::WindowCloseButtonHint);
 
-  setStyleSheet(
-      "QDialog { background:#141414; color:#D0D0D0; }"
-      "QTableWidget { background:#161616; border:1px solid #222; "
-      "border-radius:6px; "
-      "  gridline-color:#1E1E1E; color:#C8C8C8; font-size:8.5pt; outline:none; "
-      "}"
-      "QTableWidget::item { padding:6px 10px; border-bottom:1px solid #1E1E1E; "
-      "}"
-      "QTableWidget::item:selected { background:#212121; color:#E8872A; }"
-      "QHeaderView::section { background:#1C1C1C; color:#505050; border:none; "
-      "  border-bottom:1px solid #262626; padding:6px 10px; font-size:7.5pt; "
-      "  letter-spacing:0.4px; font-weight:600; }"
-      "QProgressBar { background:#1A1A1A; border:1px solid #262626; "
-      "border-radius:4px; "
-      "  min-height:10px; max-height:10px; text-align:center; }"
-      "QProgressBar::chunk { background:#E8872A; border-radius:3px; }"
-      "QLabel { color:#D0D0D0; font-size:8.5pt; }");
-
   buildCatalog();
   m_recommendedId = recommendedModelId();
 
@@ -57,12 +40,12 @@ ModelDownloadDialog::ModelDownloadDialog(const QString &modelsDir,
   {
     auto *topRow = new QHBoxLayout();
     auto *titleLbl = new QLabel("Whisper Model Manager", this);
-    titleLbl->setStyleSheet("color:#E0E0E0; font-size:11pt; font-weight:700;");
+    Theme::setRole(titleLbl, "pageTitle");
     topRow->addWidget(titleLbl);
     topRow->addStretch();
 
     m_systemInfoLabel = new QLabel(this);
-    m_systemInfoLabel->setStyleSheet("color:#505050; font-size:8pt;");
+    Theme::setRole(m_systemInfoLabel, "faint");
     topRow->addWidget(m_systemInfoLabel);
     vl->addLayout(topRow);
 
@@ -75,24 +58,14 @@ ModelDownloadDialog::ModelDownloadDialog(const QString &modelsDir,
 
   {
     auto *recRow = new QHBoxLayout();
-    auto *recIcon = new QLabel("(Rec)", this);
-    recIcon->setStyleSheet("color:#E8872A; font-size:10pt;");
-    recRow->addWidget(recIcon);
-
     m_recommendBadge = new QLabel(this);
-    m_recommendBadge->setStyleSheet(
-        "color:#E8872A; font-size:8.5pt; font-weight:600; "
-        "background:#1F1A10; border:1px solid #3A2A10; "
-        "border-radius:4px; padding:3px 10px;");
+    Theme::setRole(m_recommendBadge, "badge");
     recRow->addWidget(m_recommendBadge);
     recRow->addStretch();
 
     auto *refBtn = new QPushButton("Refresh", this);
-    refBtn->setStyleSheet(
-        "QPushButton { background:#1E1E1E; color:#606060; border:1px solid "
-        "#2A2A2A; "
-        "  border-radius:5px; padding:4px 12px; font-size:8pt; }"
-        "QPushButton:hover { color:#A0A0A0; border-color:#383838; }");
+    refBtn->setObjectName("secondaryBtn");
+    refBtn->setToolTip("Re-check which models are installed");
     connect(refBtn, &QPushButton::clicked, [this] { populateTable(); });
     recRow->addWidget(refBtn);
     vl->addLayout(recRow);
@@ -121,6 +94,12 @@ ModelDownloadDialog::ModelDownloadDialog(const QString &modelsDir,
   m_table->setShowGrid(false);
   m_table->setAlternatingRowColors(false);
   m_table->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+  m_table->horizontalHeader()->setHighlightSections(false);
+  m_table->setFocusPolicy(Qt::NoFocus);
+  connect(m_table, &QTableWidget::cellDoubleClicked, this, [this] {
+    if (m_downloadBtn->isEnabled() && m_downloadBtn->isVisible())
+      onDownloadClicked();
+  });
   connect(m_table, &QTableWidget::itemSelectionChanged, this,
           &ModelDownloadDialog::onSelectionChanged);
   vl->addWidget(m_table, 1);
@@ -130,7 +109,7 @@ ModelDownloadDialog::ModelDownloadDialog(const QString &modelsDir,
       "Recommended model is pre-selected based on your system memory.",
       this);
   m_descLabel->setWordWrap(true);
-  m_descLabel->setStyleSheet("color:#505050; font-size:8pt; padding:2px 0;");
+  Theme::setRole(m_descLabel, "faint");
   vl->addWidget(m_descLabel);
 
   {
@@ -138,7 +117,7 @@ ModelDownloadDialog::ModelDownloadDialog(const QString &modelsDir,
     progRow->setSpacing(5);
 
     m_progressLabel = new QLabel("", this);
-    m_progressLabel->setStyleSheet("color:#808080; font-size:8pt;");
+    Theme::setRole(m_progressLabel, "muted");
     progRow->addWidget(m_progressLabel);
 
     m_progressBar = new QProgressBar(this);
@@ -155,37 +134,30 @@ ModelDownloadDialog::ModelDownloadDialog(const QString &modelsDir,
 
     m_downloadBtn = new QPushButton("Download Selected Model", this);
     m_downloadBtn->setEnabled(false);
-    m_downloadBtn->setStyleSheet(
-        "QPushButton { background:#E8872A; color:#0E0E0E; border:none; "
-        "border-radius:6px; "
-        "  padding:8px 20px; font-size:9pt; font-weight:700; min-height:32px; }"
-        "QPushButton:hover { background:#F09840; }"
-        "QPushButton:pressed { background:#C97020; }"
-        "QPushButton:disabled { background:#2A2A2A; color:#404040; }");
+    m_downloadBtn->setObjectName("primaryBtn");
     connect(m_downloadBtn, &QPushButton::clicked, this,
             &ModelDownloadDialog::onDownloadClicked);
     btnRow->addWidget(m_downloadBtn);
 
     m_cancelBtn = new QPushButton("Cancel Download", this);
     m_cancelBtn->setVisible(false);
-    m_cancelBtn->setStyleSheet("QPushButton { background:#2A1A1A; "
-                               "color:#E05050; border:1px solid #3A2020; "
-                               "  border-radius:6px; padding:8px 18px; "
-                               "font-size:9pt; min-height:32px; }"
-                               "QPushButton:hover { background:#3A2020; }");
+    m_cancelBtn->setObjectName("dangerBtn");
     connect(m_cancelBtn, &QPushButton::clicked, this,
             &ModelDownloadDialog::onCancelDownload);
     btnRow->addWidget(m_cancelBtn);
 
+    m_deleteBtn = new QPushButton("Delete Model", this);
+    m_deleteBtn->setObjectName("dangerBtn");
+    m_deleteBtn->setToolTip("Remove the selected model from disk");
+    m_deleteBtn->setVisible(false);
+    connect(m_deleteBtn, &QPushButton::clicked, this,
+            &ModelDownloadDialog::onDeleteClicked);
+    btnRow->addWidget(m_deleteBtn);
+
     btnRow->addStretch();
 
     m_closeBtn = new QPushButton("Close", this);
-    m_closeBtn->setStyleSheet(
-        "QPushButton { background:#222222; color:#808080; border:1px solid "
-        "#2E2E2E; "
-        "  border-radius:6px; padding:8px 18px; font-size:9pt; "
-        "min-height:32px; }"
-        "QPushButton:hover { color:#C0C0C0; border-color:#404040; }");
+    m_closeBtn->setObjectName("secondaryBtn");
     connect(m_closeBtn, &QPushButton::clicked, this, &QDialog::accept);
     btnRow->addWidget(m_closeBtn);
 
@@ -244,7 +216,7 @@ void ModelDownloadDialog::populateTable() {
     auto *nameItem = new QTableWidgetItem(m.displayName);
     nameItem->setData(Qt::UserRole, i);
     if (m.id == m_recommendedId)
-      nameItem->setForeground(QColor("#E8872A"));
+      nameItem->setForeground(Theme::Color::Accent);
     m_table->setItem(i, 0, nameItem);
 
     m_table->setItem(i, 1, new QTableWidgetItem(formatSize(m.sizeBytes)));
@@ -267,11 +239,12 @@ void ModelDownloadDialog::populateTable() {
     QString modelFile = m_modelsDir + "/" + m.filename;
     bool exists = QFileInfo::exists(modelFile);
     auto *statusItem =
-        new QTableWidgetItem(exists ? "[Downloaded]" : "Not downloaded");
-    statusItem->setForeground(exists ? QColor("#4CAF50") : QColor("#404040"));
+        new QTableWidgetItem(exists ? "Downloaded" : "Not downloaded");
+    statusItem->setForeground(exists ? Theme::Color::Success
+                                     : Theme::Color::TextFaint);
     m_table->setItem(i, 6, statusItem);
 
-    m_table->setRowHeight(i, 32);
+    m_table->setRowHeight(i, 34);
 
     if (m.id == m_recommendedId)
       recRow = i;
@@ -308,11 +281,12 @@ void ModelDownloadDialog::onSelectionChanged() {
   m_downloadBtn->setText(exists ? "Re-download Model"
                                 : "Download Selected Model");
   m_downloadBtn->setEnabled(!m_reply || !m_reply->isRunning());
+  m_deleteBtn->setVisible(exists && !m_reply);
 
   m_descLabel->setText(
-      QString("<b>%1</b>  -  %2<br>"
-              "<span style='color:#505050;'>Size: %3 &nbsp;|&nbsp; "
-              "RAM: %4 MB minimum &nbsp;|&nbsp; %5</span>")
+      QString("<b style='color:#A0A0A0;'>%1</b>  -  %2<br>"
+              "Size: %3 &nbsp;|&nbsp; "
+              "RAM: %4 MB minimum &nbsp;|&nbsp; %5")
           .arg(m.displayName)
           .arg(m.description)
           .arg(formatSize(m.sizeBytes))
@@ -353,6 +327,8 @@ void ModelDownloadDialog::onDownloadClicked() {
   });
 
   setDownloading(true);
+  m_speedTimer.start();
+  Theme::setRole(m_progressLabel, "muted");
   m_progressLabel->setText(QString("Downloading %1 (%2)...")
                                .arg(m_downloading.displayName)
                                .arg(formatSize(m_downloading.sizeBytes)));
@@ -362,10 +338,21 @@ void ModelDownloadDialog::onDownloadProgress(qint64 received, qint64 total) {
   if (total > 0) {
     int pct = static_cast<int>(100.0 * received / total);
     m_progressBar->setValue(pct);
-    m_progressLabel->setText(QString("Downloading %1  -  %2 / %3")
+    QString rate;
+    const qint64 ms = m_speedTimer.elapsed();
+    if (ms > 1000 && received > 0) {
+      const double bps = received * 1000.0 / ms;
+      const int eta = static_cast<int>((total - received) / bps);
+      rate = QString("  |  %1/s  |  %2 left")
+                 .arg(formatSize(static_cast<qint64>(bps)))
+                 .arg(Theme::formatDuration(eta));
+    }
+    m_progressLabel->setText(QString("Downloading %1  -  %2 / %3  (%4%)%5")
                                  .arg(m_downloading.displayName)
                                  .arg(formatSize(received))
-                                 .arg(formatSize(total)));
+                                 .arg(formatSize(total))
+                                 .arg(pct)
+                                 .arg(rate));
   }
 }
 
@@ -384,7 +371,7 @@ void ModelDownloadDialog::onDownloadFinished() {
   if (reply->error() != QNetworkReply::NoError) {
     QFile::remove(m_outFile.fileName());
     m_progressLabel->setText(QString("Error: %1").arg(reply->errorString()));
-    m_progressLabel->setStyleSheet("color:#E05050; font-size:8pt;");
+    Theme::setRole(m_progressLabel, "error");
   } else {
     QString finalPath = m_modelsDir + "/" + m_downloading.filename;
     QFile::remove(finalPath);
@@ -392,15 +379,40 @@ void ModelDownloadDialog::onDownloadFinished() {
     m_lastDownloaded = finalPath;
 
     m_progressLabel->setText(
-        QString("[OK]  %1 downloaded successfully -> models/%2")
+        QString("%1 downloaded successfully  ->  models/%2")
             .arg(m_downloading.displayName)
             .arg(m_downloading.filename));
-    m_progressLabel->setStyleSheet("color:#4CAF50; font-size:8pt;");
+    Theme::setRole(m_progressLabel, "success");
     populateTable();
   }
 
   reply->deleteLater();
   setDownloading(false);
+}
+
+void ModelDownloadDialog::onDeleteClicked() {
+  if (m_selectedRow < 0 || m_selectedRow >= m_catalog.size())
+    return;
+  const ModelInfo &m = m_catalog[m_selectedRow];
+  const QString path = m_modelsDir + "/" + m.filename;
+  if (QMessageBox::question(
+          this, "Delete Model",
+          QString("Delete %1 (%2) from disk?\n\nYou can download it again "
+                  "later.")
+              .arg(m.displayName)
+              .arg(formatSize(QFileInfo(path).size()))) != QMessageBox::Yes)
+    return;
+  if (QFile::remove(path)) {
+    m_progressLabel->setText(QString("%1 deleted.").arg(m.displayName));
+    Theme::setRole(m_progressLabel, "muted");
+    const int row = m_selectedRow;
+    populateTable();
+    m_table->selectRow(row);
+  } else {
+    m_progressLabel->setText(
+        QString("Could not delete %1 - is it in use?").arg(m.filename));
+    Theme::setRole(m_progressLabel, "error");
+  }
 }
 
 void ModelDownloadDialog::abortActiveDownload() {
@@ -424,7 +436,7 @@ void ModelDownloadDialog::onCancelDownload() {
   abortActiveDownload();
   setDownloading(false);
   m_progressLabel->setText("Download cancelled.");
-  m_progressLabel->setStyleSheet("color:#808080; font-size:8pt;");
+  Theme::setRole(m_progressLabel, "muted");
 }
 
 void ModelDownloadDialog::closeEvent(QCloseEvent *e) {
@@ -437,6 +449,8 @@ void ModelDownloadDialog::closeEvent(QCloseEvent *e) {
 void ModelDownloadDialog::setDownloading(bool active) {
   m_downloadBtn->setVisible(!active);
   m_cancelBtn->setVisible(active);
+  if (active)
+    m_deleteBtn->setVisible(false);
   m_progressBar->setVisible(active);
   m_closeBtn->setEnabled(!active);
   m_table->setEnabled(!active);

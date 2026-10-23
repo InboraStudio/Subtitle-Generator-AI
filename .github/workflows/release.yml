@@ -71,7 +71,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libfuse2 libxcb-cursor0 \
             libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0
-          cmake -S . -B build -G Ninja $CMAKE_COMMON
+          cmake -S . -B build -G Ninja $CMAKE_COMMON -DAPP_VERSION="$VERSION"
           cmake --build build -j
 
           mkdir -p AppDir/usr/bin
@@ -102,7 +102,7 @@ jobs:
         if: matrix.kind == 'mac'
         run: |
           brew install ninja
-          cmake -S . -B build -G Ninja $CMAKE_COMMON \
+          cmake -S . -B build -G Ninja $CMAKE_COMMON -DAPP_VERSION="$VERSION" \
             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
             -DCMAKE_MACOSX_BUNDLE=ON
@@ -127,25 +127,23 @@ jobs:
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-qt6-base
             mingw-w64-ucrt-x86_64-qt6-tools
-            zip
+            git
 
-      - name: Build + deploy (Windows)
-        if: matrix.kind == 'windows'
-        shell: msys2 {0}
-        run: |
-          cmake -S . -B build -G Ninja $CMAKE_COMMON
-          cmake --build build -j
-          ./deploy.sh build/bin/SubtitleGeneratorAI.exe
-          mkdir -p dist
-          (cd build/bin && zip -qr "../../dist/SubtitleGeneratorAI-Windows-${VERSION}-portable.zip" .)
-
-      - name: Installer (Windows)
+      - name: Install Inno Setup (Windows)
         if: matrix.kind == 'windows'
         shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      # Same script as local release builds: builds, bundles Qt + runtime +
+      # FFmpeg, verifies nothing is missing, then makes the installer and zip.
+      - name: Build installer + portable zip (Windows)
+        if: matrix.kind == 'windows'
+        shell: msys2 {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          choco install innosetup -y --no-progress
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:VERSION" installer.iss
-          Move-Item installer_output\SubtitleGeneratorAI_Setup.exe "dist\SubtitleGeneratorAI-Setup-$env:VERSION.exe"
+          [[ "$VERSION" == 0.0.0-dev ]] && export VERSION=
+          BUILD_DIR=build bash scripts/package-windows.sh
 
       # ------------------------------------------------------------ all
       - uses: actions/upload-artifact@v4

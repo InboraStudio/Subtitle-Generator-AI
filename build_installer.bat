@@ -1,54 +1,30 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal
 
-set "ISCC="
-for %%P in (
-    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-    "C:\Program Files\Inno Setup 6\ISCC.exe"
-    "C:\Program Files (x86)\Inno Setup 5\ISCC.exe"
-    "C:\Program Files\Inno Setup 5\ISCC.exe"
-) do (
-    if exist %%P (
-        set "ISCC=%%~P"
-        goto :found
-    )
-)
+rem Builds the complete Windows release (installer + portable zip) into dist\.
+rem Needs MSYS2 with the UCRT64 toolchain + Qt 6, and Inno Setup 6:
+rem   pacman -S mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-cmake ^
+rem             mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-qt6-base ^
+rem             mingw-w64-ucrt-x86_64-qt6-tools git
+rem   https://jrsoftware.org/isdl.php
 
-echo.
-echo  [ERROR] Inno Setup not found. Download it from:
-echo          https://jrsoftware.org/isdl.php
-echo          Then re-run this script.
-echo.
-pause
-exit /b 1
-
-:found
-echo  [OK] Inno Setup: !ISCC!
-
-if not exist "build\bin\SubtitleGeneratorAI.exe" (
-    echo  [ERROR] build\bin\SubtitleGeneratorAI.exe not found.
-    echo  Please build the project first.
+set "MSYS_ROOT=C:\msys64"
+if not exist "%MSYS_ROOT%\usr\bin\bash.exe" (
+    echo  [ERROR] MSYS2 not found at %MSYS_ROOT%. Install it from https://www.msys2.org
     pause
     exit /b 1
 )
 
-echo  [INFO] Generating app icon ...
-powershell -NoProfile -ExecutionPolicy Bypass -File "make_icon.ps1"
-
-echo.
-echo  [INFO] Compiling installer ...
-"!ISCC!" "installer.iss"
-
-if %ERRORLEVEL% == 0 (
+set MSYSTEM=UCRT64
+rem A login shell starts in the MSYS2 home folder, so cd to this repo first.
+"%MSYS_ROOT%\usr\bin\bash.exe" -lc "cd \"$(cygpath -u '%~dp0')\" && bash scripts/package-windows.sh"
+if errorlevel 1 (
     echo.
-    echo  ====================================================
-    echo   SUCCESS! Installer ready:
-    echo   installer_output\SubtitleGeneratorAI_Setup.exe
-    echo  ====================================================
-) else (
-    echo.
-    echo  [ERROR] Installer compilation failed.
+    echo  [ERROR] Packaging failed - see the output above.
+    pause
+    exit /b 1
 )
 
 echo.
+echo  Installer and portable zip are in the dist\ folder.
 pause

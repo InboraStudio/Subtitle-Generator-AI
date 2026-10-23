@@ -24,11 +24,14 @@ bool VideoEmbedder::embed(const QString &videoPath, const QString &srtPath,
     escapedSrt.replace("\\", "/").replace(":", "\\:");
 
     // Applying FFmpeg force_style for the subtitle aesthetic options
+    // ASS colours are &HAABBGGRR, while the UI stores RRGGBB.
+    const QString rgb = job.fontColorHex.rightJustified(6, '0').right(6);
+    const QString bgr = rgb.mid(4, 2) + rgb.mid(2, 2) + rgb.mid(0, 2);
     QString forceStyle = QString("Fontname=%1,Fontsize=%2,PrimaryColour=&H00%3&"
                                  ",Outline=%4,Alignment=%5")
                              .arg(job.fontName)
                              .arg(job.fontSize)
-                             .arg(job.fontColorHex)
+                             .arg(bgr)
                              .arg(job.outlineThickness)
                              .arg(job.alignment);
 

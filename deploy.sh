@@ -30,20 +30,33 @@ fi
 "$WINDEPLOYQT" --release --no-translations --no-system-d3d-compiler \
   --no-opengl-sw "$EXE"
 
+# The OpenSSL TLS backend loads libssl/libcrypto at runtime (invisible to ldd),
+# so on a clean PC it would fail. Windows' own Schannel backend is bundled
+# too and needs nothing extra, so ship only that one.
+rm -f "$BIN_DIR"/tls/qopensslbackend*.dll
+
 # 2) Copy every remaining dependency that still resolves into the MSYS2 tree
 #    (compiler runtime + Qt third-party libs) so nothing is pulled from PATH.
-copy_deps() {
+#    Plugins in subfolders count too (imageformats, tls, styles...), and new
+#    DLLs can pull in more, so repeat until a pass copies nothing.
+msys_deps() {
   ldd "$1" 2>/dev/null | grep -iE "/(ucrt64|mingw64|clang64)/bin/" \
-    | awk '{print $3}' | sort -u | while read -r dep; do
-      name="$(basename "$dep")"
-      [[ -f "$BIN_DIR/$name" ]] || cp "$dep" "$BIN_DIR/"
-    done
+    | awk '{print $3}' | sort -u
 }
-# Resolve transitively: scan the exe and each Qt DLL already placed in bin.
-for f in "$EXE" "$BIN_DIR"/Qt6*.dll; do
-  [[ -f "$f" ]] && copy_deps "$f"
+while :; do
+  copied=0
+  while read -r f; do
+    while read -r dep; do
+      [[ -n "$dep" ]] || continue
+      name="$(basename "$dep")"
+      if [[ ! -f "$BIN_DIR/$name" ]]; then
+        cp "$dep" "$BIN_DIR/"
+        echo "  + $name"
+        copied=1
+      fi
+    done < <(msys_deps "$f")
+  done < <(find "$BIN_DIR" -iname '*.exe' -o -iname '*.dll')
+  [[ $copied -eq 0 ]] && break
 done
 
-remaining="$(ldd "$EXE" 2>/dev/null | grep -icE "/(ucrt64|mingw64|clang64)/bin/" || true)"
-echo "External MSYS2 deps still referenced by the exe: $remaining (want 0)"
 echo "Done. $BIN_DIR is now self-contained."

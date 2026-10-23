@@ -1,5 +1,6 @@
 #pragma once
 #include <QDialog>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QLabel>
 #include <QMap>
@@ -39,6 +40,7 @@ private slots:
   void onDownloadProgress(qint64 received, qint64 total);
   void onDownloadFinished();
   void onCancelDownload();
+  void onDeleteClicked();
 
 private:
   void buildCatalog();
@@ -66,10 +68,12 @@ private:
   QLabel *m_progressLabel;
   QPushButton *m_downloadBtn;
   QPushButton *m_cancelBtn;
+  QPushButton *m_deleteBtn;
   QPushButton *m_closeBtn;
 
   QNetworkAccessManager m_net;
   QNetworkReply *m_reply = nullptr;
   QFile m_outFile;
   ModelInfo m_downloading;
+  QElapsedTimer m_speedTimer;
 };

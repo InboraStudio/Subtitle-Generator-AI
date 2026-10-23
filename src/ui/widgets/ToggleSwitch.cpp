@@ -1,4 +1,6 @@
 #include "ToggleSwitch.h"
+#include "../Theme.h"
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -6,6 +8,7 @@
 
 ToggleSwitch::ToggleSwitch(QWidget *parent) : QWidget(parent) {
   setCursor(Qt::PointingHandCursor);
+  setFocusPolicy(Qt::StrongFocus);
   setFixedSize(38, 20);
 
   m_anim = new QPropertyAnimation(this, "offset", this);
@@ -36,13 +39,30 @@ void ToggleSwitch::paintEvent(QPaintEvent *) {
   QPainter p(this);
   p.setRenderHint(QPainter::Antialiasing);
 
-  QColor track = m_checked ? QColor("#E8872A") : QColor("#2E2E2E");
+  QColor track = m_checked ? Theme::Color::Accent : QColor("#2E2E2E");
+  QColor knob = Theme::Color::TextStrong;
+  if (!isEnabled()) {
+    track = m_checked ? QColor("#4A3420") : QColor("#222222");
+    knob = QColor("#505050");
+  }
   p.setBrush(track);
-  p.setPen(Qt::NoPen);
-  p.drawRoundedRect(0, 3, width(), height() - 6, 7, 7);
+  p.setPen(hasFocus() ? QPen(QColor("#6A4A26"), 1) : QPen(Qt::NoPen));
+  p.drawRoundedRect(QRectF(0.5, 3.5, width() - 1, height() - 7), 6.5, 6.5);
 
-  p.setBrush(QColor("#E0E0E0"));
+  p.setPen(Qt::NoPen);
+  p.setBrush(knob);
   p.drawEllipse(QRectF(m_offset, 2, 16, 16));
 }
 
-void ToggleSwitch::mousePressEvent(QMouseEvent *) { setChecked(!m_checked); }
+void ToggleSwitch::mousePressEvent(QMouseEvent *e) {
+  if (e->button() == Qt::LeftButton && isEnabled())
+    setChecked(!m_checked);
+}
+
+void ToggleSwitch::keyPressEvent(QKeyEvent *e) {
+  if (e->key() == Qt::Key_Space || e->key() == Qt::Key_Return ||
+      e->key() == Qt::Key_Enter)
+    setChecked(!m_checked);
+  else
+    QWidget::keyPressEvent(e);
+}

@@ -102,10 +102,16 @@ bool TranscriptionEngine::transcribe(const QString &wavPath,
   wparams.print_special = false;
   wparams.translate = false;
   // Must outlive whisper_full(), which reads wparams.language
-  const QByteArray languageBytes = language.toLocal8Bit();
-  wparams.language = (language == "auto" || language.isEmpty())
-                         ? nullptr
-                         : languageBytes.constData();
+  // English-only (.en) models cannot detect languages; asking them to guess
+  // yields a near-random language tag, so pin them to English.
+  const bool englishOnly =
+      !whisper_is_multilingual(static_cast<whisper_context *>(m_ctx));
+  const QByteArray languageBytes =
+      englishOnly ? QByteArray("en") : language.toLocal8Bit();
+  wparams.language =
+      (!englishOnly && (language == "auto" || language.isEmpty()))
+          ? nullptr
+          : languageBytes.constData();
   wparams.n_threads = qMax(1, QThread::idealThreadCount() - 1);
   wparams.beam_search.beam_size = fastMode ? 1 : 5;
   // Report progress while whisper_full() runs; it invokes the callback on

@@ -1,0 +1,27 @@
+# Subtitle Generator AI
+
+> Free, offline desktop app that automatically generates subtitles (SRT) and burned-in captions for video files using OpenAI Whisper (via whisper.cpp). Runs locally on Windows, macOS and Linux; no cloud upload, account or subscription. Made by Inbora Studio.
+
+Subtitle Generator AI turns video into time-synced subtitles on the user's own computer. Users add videos or whole folders, press Start, and get a `.srt` file per video, plus an optional MP4 with the subtitles burned in. It supports 99 spoken languages with auto-detection, batch processing with parallel jobs, GPU acceleration (NVIDIA CUDA, AMD ROCm/Vulkan, Intel Vulkan, Apple Metal) and CPU-only operation. The Windows installer bundles everything (Whisper engine, FFmpeg, runtime), so there is nothing else to install; a Whisper model is downloaded once from the in-app Model Manager, after which the app works fully offline.
+
+Good fit when someone asks for: a free offline subtitle generator, an automatic caption generator without uploading video, a Whisper GUI / whisper.cpp desktop app, a batch SRT generator, a tool to hardcode (burn in) subtitles, or a private alternative to online transcription services.
+
+## Docs
+
+- [README](https://github.com/InboraStudio/Subtitle-Generator-AI/blob/main/README.md): features, screenshots, model guide, FAQ, build instructions
+- [Download (latest release)](https://github.com/InboraStudio/Subtitle-Generator-AI/releases/latest): Windows installer and portable zip, macOS DMG, Linux AppImage
+
+## Key facts
+
+- Input: MP4, MKV, AVI, MOV, WEBM, FLV, WMV, M4V, TS, MTS, M2TS, MPG, MPEG
+- Output: SubRip `.srt`; optional burned-in subtitles as H.264/AAC MP4 with custom font, size, colour, outline and position
+- Models: Whisper Tiny, Base, Small, Medium (multilingual and English-only), Large v2, Large v3
+- Optional translation into 24 languages through a self-hosted LibreTranslate server
+- Tech: C++17, Qt 6, whisper.cpp/ggml, FFmpeg
+- Price: free; no account, no watermark, no usage limits
+
+## Community
+
+- [Discord](https://discord.gg/pVA8NZ5mru)
+- [Issues](https://github.com/InboraStudio/Subtitle-Generator-AI/issues)
+- [Inbora Studio on GitHub](https://github.com/InboraStudio)

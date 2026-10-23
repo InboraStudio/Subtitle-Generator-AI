@@ -2,9 +2,11 @@
 #include "../../pipeline/Job.h"
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QFrame>
 #include <QLabel>
-#include <QListWidget>
 #include <QPushButton>
+#include <QStackedWidget>
+#include <QTableWidget>
 #include <QWidget>
 
 class InputPanel : public QWidget {
@@ -20,30 +22,47 @@ public:
                        int alignment) const;
   int fileCount() const;
 
+  // Adds files and folders (scanned recursively), e.g. from the command line
+  // or a drop.
+  void addPaths(const QStringList &paths);
+
+  // Locks the queue while a batch is running so it cannot change underneath.
+  void setBusy(bool busy);
+
+public slots:
+  void addFile();
+  void addFolder();
+
 signals:
   void filesChanged(int count);
   void startRequested();
 
 private slots:
-  void addFile();
-  void addFolder();
   void removeSelected();
   void clearAll();
+  void showContextMenu(const QPoint &pos);
+  void updateActions();
 
 protected:
   void dragEnterEvent(QDragEnterEvent *event) override;
+  void dragLeaveEvent(QDragLeaveEvent *event) override;
   void dropEvent(QDropEvent *event) override;
 
 private:
-  QListWidget *m_fileList;
+  QStackedWidget *m_stack;
+  QFrame *m_dropZone;
+  QTableWidget *m_table;
   QLabel *m_countLabel;
+  QLabel *m_summaryLabel;
   QPushButton *m_addFileBtn;
   QPushButton *m_addFolderBtn;
   QPushButton *m_removeBtn;
   QPushButton *m_clearBtn;
   QPushButton *m_startBtn;
+  bool m_busy = false;
 
   QStringList m_filePaths;
   void addFilePaths(const QStringList &paths);
   void refreshList();
+  void setDragActive(bool active);
 };

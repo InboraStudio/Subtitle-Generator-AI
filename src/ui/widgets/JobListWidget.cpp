@@ -1,10 +1,12 @@
 #include "JobListWidget.h"
-#include <QColor>
+#include "../Theme.h"
+#include <QDesktopServices>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QUrl>
 #include <QVBoxLayout>
 
 static QString statusToString(JobStatus s) {
@@ -22,7 +24,7 @@ static QString statusToString(JobStatus s) {
   case JobStatus::Embedding:
     return "Embedding";
   case JobStatus::Completed:
-    return "Completed";
+    return "Done";
   case JobStatus::Failed:
     return "Failed";
   case JobStatus::Cancelled:
@@ -31,87 +33,126 @@ static QString statusToString(JobStatus s) {
   return "Unknown";
 }
 
-static QColor statusColor(JobStatus s) {
+static QString statusState(JobStatus s) {
   switch (s) {
+  case JobStatus::Queued:
+    return "queued";
   case JobStatus::Completed:
-    return QColor("#4CAF50");
+    return "ok";
   case JobStatus::Failed:
-    return QColor("#E05050");
+    return "error";
   case JobStatus::Cancelled:
-    return QColor("#808080");
+    return "cancelled";
   default:
-    return QColor("#E8872A");
+    return "running";
   }
 }
 
 JobListItem::JobListItem(const Job &job, QWidget *parent)
-    : QWidget(parent), m_jobId(job.id) {
-  setFixedHeight(52);
-  setStyleSheet("background:#1C1C1C; border-bottom:1px solid #222222;");
+    : QWidget(parent), m_jobId(job.id),
+      m_fullName(QFileInfo(job.inputPath).fileName()) {
+  setFixedHeight(58);
+  setToolTip(job.inputPath);
 
   auto *hl = new QHBoxLayout(this);
-  hl->setContentsMargins(10, 6, 10, 6);
-  hl->setSpacing(10);
+  hl->setContentsMargins(14, 8, 14, 8);
+  hl->setSpacing(14);
 
-  auto *left = new QWidget(this);
-  auto *vl = new QVBoxLayout(left);
-  vl->setContentsMargins(0, 0, 0, 0);
-  vl->setSpacing(2);
+  auto *left = new QVBoxLayout();
+  left->setSpacing(5);
 
-  m_nameLabel = new QLabel(QFileInfo(job.inputPath).fileName(), left);
-  m_nameLabel->setStyleSheet(
-      "color:#C8C8C8; font-size:8.5pt; font-weight:600;");
-  m_nameLabel->setMaximumWidth(350);
-  m_nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  QFontMetrics fm(m_nameLabel->font());
-  m_nameLabel->setText(
-      fm.elidedText(m_nameLabel->text(), Qt::ElideMiddle, 350));
-  vl->addWidget(m_nameLabel);
+  auto *top = new QHBoxLayout();
+  top->setSpacing(8);
+  m_nameLabel = new QLabel(this);
+  m_nameLabel->setObjectName("jobName");
+  m_nameLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  top->addWidget(m_nameLabel, 1);
+  m_stageLabel = new QLabel(this);
+  Theme::setRole(m_stageLabel, "faint");
+  top->addWidget(m_stageLabel);
+  left->addLayout(top);
 
-  m_bar = new QProgressBar(left);
+  m_bar = new QProgressBar(this);
   m_bar->setRange(0, 100);
   m_bar->setValue(0);
   m_bar->setTextVisible(false);
-  m_bar->setFixedHeight(4);
-  vl->addWidget(m_bar);
+  m_bar->setProperty("thin", true);
+  left->addWidget(m_bar);
+  hl->addLayout(left, 1);
 
-  hl->addWidget(left, 1);
+  m_percentLabel = new QLabel("0%", this);
+  m_percentLabel->setFixedWidth(36);
+  m_percentLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  Theme::setRole(m_percentLabel, "muted");
+  hl->addWidget(m_percentLabel);
 
-  auto *right = new QWidget(this);
-  auto *vr = new QVBoxLayout(right);
-  vr->setContentsMargins(0, 0, 0, 0);
-  vr->setSpacing(2);
-  vr->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-  right->setFixedWidth(90);
+  m_pill = new QLabel(this);
+  m_pill->setObjectName("pill");
+  m_pill->setAlignment(Qt::AlignCenter);
+  m_pill->setFixedWidth(90);
+  hl->addWidget(m_pill);
 
-  m_statusLabel = new QLabel("Queued", right);
-  m_statusLabel->setStyleSheet(
-      "color:#E8872A; font-size:7.5pt; font-weight:600;");
-  m_statusLabel->setAlignment(Qt::AlignRight);
-  vr->addWidget(m_statusLabel);
+  m_showBtn = new QPushButton("Show", this);
+  m_showBtn->setObjectName("ghostBtn");
+  m_showBtn->setToolTip("Open the folder containing the subtitle file");
+  m_showBtn->setFixedWidth(52);
+  m_showBtn->setEnabled(false);
+  connect(m_showBtn, &QPushButton::clicked, this, [this] {
+    if (!m_outputPath.isEmpty())
+      QDesktopServices::openUrl(
+          QUrl::fromLocalFile(QFileInfo(m_outputPath).absolutePath()));
+  });
+  hl->addWidget(m_showBtn);
 
-  m_stageLabel = new QLabel("", right);
-  m_stageLabel->setStyleSheet("color:#454545; font-size:7pt;");
-  m_stageLabel->setAlignment(Qt::AlignRight);
-  vr->addWidget(m_stageLabel);
+  setStatus(JobStatus::Queued);
+}
 
-  hl->addWidget(right);
+void JobListItem::elideName() {
+  QFontMetrics fm(m_nameLabel->font());
+  m_nameLabel->setText(
+      fm.elidedText(m_fullName, Qt::ElideMiddle, qMax(40, m_nameLabel->width())));
+}
+
+void JobListItem::resizeEvent(QResizeEvent *e) {
+  QWidget::resizeEvent(e);
+  elideName();
 }
 
 void JobListItem::updateProgress(int percent, const QString &stage) {
   m_bar->setValue(percent);
+  m_percentLabel->setText(QString("%1%").arg(percent));
   m_stageLabel->setText(stage);
+  if (m_status == JobStatus::Queued)
+    setStatus(JobStatus::Extracting);
+  if (stage.startsWith("Transcrib"))
+    m_pill->setText("Transcribing");
+  else if (stage.startsWith("Translat"))
+    m_pill->setText("Translating");
+  else if (stage.startsWith("Writing"))
+    m_pill->setText("Writing");
+  else if (stage.startsWith("Embed"))
+    m_pill->setText("Embedding");
 }
 
 void JobListItem::setStatus(JobStatus status) {
-  m_statusLabel->setText(statusToString(status));
-  m_statusLabel->setStyleSheet(
-      QString("color:%1; font-size:7.5pt; font-weight:600;")
-          .arg(statusColor(status).name()));
-  if (status == JobStatus::Completed)
+  m_status = status;
+  m_pill->setText(statusToString(status));
+  m_pill->setProperty("state", statusState(status));
+  Theme::repolish(m_pill);
+
+  QString barState;
+  if (status == JobStatus::Completed) {
     m_bar->setValue(100);
-  if (status == JobStatus::Failed)
-    m_bar->setValue(0);
+    m_percentLabel->setText("100%");
+    m_stageLabel->setText(QString());
+    barState = "ok";
+  } else if (status == JobStatus::Failed) {
+    barState = "error";
+  } else if (status == JobStatus::Cancelled) {
+    m_stageLabel->setText(QString());
+  }
+  m_bar->setProperty("state", barState);
+  Theme::repolish(m_bar);
 }
 
 void JobListItem::setError(const QString &error) {
@@ -120,10 +161,16 @@ void JobListItem::setError(const QString &error) {
   QString oneLine = error;
   oneLine.replace('\n', "  ").replace('\r', "");
   QFontMetrics fm(m_stageLabel->font());
-  m_stageLabel->setText(fm.elidedText(oneLine, Qt::ElideRight, 200));
-  m_stageLabel->setStyleSheet("color:#E05050; font-size:7pt;");
+  m_stageLabel->setText(fm.elidedText(oneLine, Qt::ElideRight, 260));
+  Theme::setRole(m_stageLabel, "error");
   setToolTip(error);
   m_stageLabel->setToolTip(error);
+}
+
+void JobListItem::setOutput(const QString &path) {
+  m_outputPath = path;
+  m_showBtn->setEnabled(!path.isEmpty());
+  m_showBtn->setToolTip(path);
 }
 
 int JobListItem::jobId() const { return m_jobId; }
@@ -134,38 +181,59 @@ JobListWidget::JobListWidget(QWidget *parent) : QWidget(parent) {
   vl->setSpacing(0);
 
   m_list = new QListWidget(this);
-  m_list->setStyleSheet("QListWidget { background:#181818; border:none; }"
-                        "QListWidget::item { padding:0; border:none; }");
+  m_list->setObjectName("jobList");
   m_list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
   m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   m_list->setSelectionMode(QAbstractItemView::NoSelection);
+  m_list->setFocusPolicy(Qt::NoFocus);
   vl->addWidget(m_list);
 }
 
 void JobListWidget::addJob(const Job &job) {
+  if (m_widgetMap.contains(job.id))
+    return;
   auto *item = new QListWidgetItem(m_list);
   auto *widget = new JobListItem(job, m_list);
-  item->setSizeHint(widget->sizeHint());
+  item->setSizeHint(QSize(0, widget->height()));
   m_list->addItem(item);
   m_list->setItemWidget(item, widget);
   m_itemMap[job.id] = item;
   m_widgetMap[job.id] = widget;
 }
 
+bool JobListWidget::hasJob(int jobId) const {
+  return m_widgetMap.contains(jobId);
+}
+
 void JobListWidget::updateJobProgress(int jobId, int percent,
                                       const QString &stage) {
-  if (m_widgetMap.contains(jobId))
-    m_widgetMap[jobId]->updateProgress(percent, stage);
+  if (auto *w = m_widgetMap.value(jobId))
+    w->updateProgress(percent, stage);
 }
 
 void JobListWidget::updateJobStatus(int jobId, JobStatus status) {
-  if (m_widgetMap.contains(jobId))
-    m_widgetMap[jobId]->setStatus(status);
+  if (auto *w = m_widgetMap.value(jobId)) {
+    w->setStatus(status);
+    if (status != JobStatus::Queued && status != JobStatus::Completed &&
+        status != JobStatus::Failed && status != JobStatus::Cancelled)
+      m_list->scrollToItem(m_itemMap.value(jobId));
+  }
 }
 
 void JobListWidget::setJobError(int jobId, const QString &error) {
-  if (m_widgetMap.contains(jobId))
-    m_widgetMap[jobId]->setError(error);
+  if (auto *w = m_widgetMap.value(jobId))
+    w->setError(error);
+}
+
+void JobListWidget::setJobOutput(int jobId, const QString &path) {
+  if (auto *w = m_widgetMap.value(jobId))
+    w->setOutput(path);
+}
+
+void JobListWidget::cancelPending() {
+  for (JobListItem *w : std::as_const(m_widgetMap))
+    if (w->status() == JobStatus::Queued)
+      w->setStatus(JobStatus::Cancelled);
 }
 
 void JobListWidget::clearAll() {
@@ -175,4 +243,3 @@ void JobListWidget::clearAll() {
 }
 
 int JobListWidget::jobCount() const { return m_list->count(); }
-  
